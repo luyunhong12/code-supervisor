@@ -5,6 +5,8 @@ import math
 import re
 import tomllib
 
+from .adapters import REGISTRY, validate_settings
+
 EXCLUDED = {
     ".git",
     ".venv",
@@ -15,6 +17,9 @@ EXCLUDED = {
     ".generated",
     "__pycache__",
     "node_modules",
+    ".tools",
+    ".build",
+    "target",
     "vendor",
 }
 CPP_SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"}
@@ -56,6 +61,7 @@ def load(root, config_path):
         "policy",
         "commands",
         "required",
+        "settings",
     }
     if unknown:
         raise ValueError(f"未知配置项：{sorted(unknown)}")
@@ -72,7 +78,7 @@ def load(root, config_path):
             raise ValueError(f"{key} 必须为非空字符串组成的列表")
     if not cfg["source"] or not cfg["checks"]:
         raise ValueError("source 和 checks 不得为空")
-    if set(cfg["checks"]) - CHECKS:
+    if set(cfg["checks"]) - (CHECKS | set(REGISTRY)):
         raise ValueError("checks 中含不支持的检查器")
     for name in cfg["source"] + cfg["policy"]:
         if not inside(root, name).exists():
@@ -91,6 +97,11 @@ def load(root, config_path):
             not isinstance(n, str) or not n for n in names
         ):
             raise ValueError("required 各模式须为非空名称列表")
+    validate_settings(cfg.setdefault("settings", {}))
+    if len(cfg["checks"]) != len(set(cfg["checks"])):
+        raise ValueError("checks 不得重复")
+    if set(ids) & set(cfg["checks"]):
+        raise ValueError("命令 id 不得与检查器重名")
     return cfg
 
 

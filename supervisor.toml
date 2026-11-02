@@ -1,6 +1,6 @@
 version = 1
 name = "code-supervisor"
-source = ["src", "tests"]
+source = ["src", "tests", "scripts"]
 checks = ["python-docs", "black", "ruff"]
 policy = ["docs/coding-standard.md", "docs/architecture.md"]
 

@@ -1,4 +1,19 @@
 version = 1
-name = "python-demo"
-source = ["."]
-checks = ["python-docs", "black", "ruff", "cpp-docs"]
+name = "cpp-demo"
+source = ["distance.hh", "test_distance.cc"]
+checks = ["cpp-docs", "doxygen", "cpp-build", "clang-tidy", "cpp-complexity", "cpp-duplicates", "cpp-coverage", "cpp-sanitizers", "cpp-mutation"]
+
+[settings.cpp-build]
+inputs = ["distance.hh", "test_distance.cc", "CMakeLists.txt"]
+[settings.clang-tidy]
+inputs = ["distance.hh", "test_distance.cc", "CMakeLists.txt"]
+[settings.cpp-coverage]
+files = ["distance.hh"]
+inputs = ["distance.hh", "test_distance.cc", "CMakeLists.txt"]
+minimum = 90
+[settings.cpp-sanitizers]
+inputs = ["distance.hh", "test_distance.cc", "CMakeLists.txt"]
+[settings.cpp-mutation]
+inputs = ["distance.hh", "test_distance.cc", "CMakeLists.txt"]
+files = ["distance.hh"]
+max_mutants = 10

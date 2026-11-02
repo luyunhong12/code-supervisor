@@ -10,10 +10,12 @@ import sys
 import uuid
 
 from . import __version__
+from .adapters import REGISTRY, advanced_checks
 from .checks import black_check, python_docs, ruff_check
 from .config import discover, load
 from .cpp import cpp_docs
 from .process import execute
+from .reporting import compare_reports, doctor, sarif
 
 TEMPLATE = """version = 1
 name = "my-project"
@@ -74,6 +76,8 @@ def builtin_checks(root, cfg, files, output):
     """逐项执行内置检查；不适用或依赖缺失均显式记录。"""
     results = []
     for name in cfg["checks"]:
+        if name in REGISTRY:
+            continue
         language = "cpp" if name == "cpp-docs" else "python"
         selected = [f for f, lang in files.items() if lang == language]
         if not selected:
@@ -138,6 +142,9 @@ def write_report(output, report):
     (output / "report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    (output / "report.sarif").write_text(
+        json.dumps(sarif(report), ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     lines = [
         "代码督导队检查报告",
         f"项目：{report['root']}",
@@ -159,7 +166,7 @@ def write_report(output, report):
     lines += [
         "",
         "人工审查：参数单位、契约真实性、架构职责、物理判据仍须人工/AI结合证据审查。",
-        "高级能力：类型检查、编译器分析、完整Doxygen、运行时安全和变异检测仅在显式配置并成功执行后成立。",
+        "高级检查以各项实际状态与证据为准；未执行的模式不计为通过。",
     ]
     (output / "report.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -197,6 +204,9 @@ def check(args):
     )
     results = builtin_checks(root, cfg, files, output)
     results.extend(command_checks(root, cfg, args.profile, args.run_commands, output))
+    results.extend(
+        advanced_checks(root, cfg, files, output, args.profile, args.run_commands)
+    )
     for name in cfg["required"].get(args.profile, []):
         match = next((r for r in results if r["id"] == name), None)
         if match is None:
@@ -244,6 +254,10 @@ def main():
     )
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="action", required=True)
+    sub.add_parser("doctor", help="检查工具安装情况")
+    diff = sub.add_parser("compare", help="比较两份历史报告，不隐藏已有问题")
+    diff.add_argument("before", type=Path)
+    diff.add_argument("after", type=Path)
     init = sub.add_parser("init", help="创建项目配置，不覆盖已有文件")
     init.add_argument("project", type=Path)
     run = sub.add_parser("check", help="检查源码并输出证据")
@@ -258,6 +272,20 @@ def main():
     )
     args = parser.parse_args()
     try:
+        if args.action == "doctor":
+            return doctor()
+        if args.action == "compare":
+            print(
+                json.dumps(
+                    compare_reports(
+                        json.loads(args.before.read_text()),
+                        json.loads(args.after.read_text()),
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 0
         if args.action == "init":
             if not args.project.is_dir():
                 raise ValueError("项目目录不存在")

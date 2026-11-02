@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: supervisor-quick
+        name: Supervisor quick checks
+        entry: .venv/bin/supervisor check .
+        language: system
+        pass_filenames: false

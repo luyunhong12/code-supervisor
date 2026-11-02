@@ -1,110 +1,102 @@
-# 代码督导队 0.1.0
+# 代码督导队 0.2.0
 
-一个独立、跨项目的命令行检查工具，基础检查不调用 AI。给 AI 的工作说明是
-[AI_REVIEW.md](AI_REVIEW.md)，不是 Skill，也不需要安装 Skill。
+独立安装、多个 Python/C++ 工程共用的代码检查工具。命令行不调用 AI；
+AI 工作说明是普通 [AI_REVIEW.md](AI_REVIEW.md)，没有 Skill，也不需要模型密钥。
+原 ub-mode 原则整理为 [24项中文督导清单](docs/review-checklist.md)。
 
-## 已能使用的内容
+## 你实际会怎样用
 
-- Python：Google 风格中文文档基础规则、Black 排版、Ruff 静态检查。
-- C++：Doxygen 中文文件/类型/函数概述的语法树检查。
-- 扫描包含未跟踪文件与无后缀 Python 入口；排除生成物和符号链接。
-- 唯一编号的中文报告与 JSON、源码 SHA256、Git 状态、配置/规范哈希。
-- 显式项目命令、超时回收、执行失败/未执行区分，以及检查期间源码变化检测。
-
-这只是第一版基础检查。完整 Google 指南、官方 Doxygen、C++ 编译器检查、
-ub 三工具专用适配及物理验收尚未完成，见[能力表](docs/capabilities.md)。
-退出0只代表本次配置已执行的规则通过，不是项目没有错误。
-
-## 安装
-
-需要 Linux 和 Python 3.11+；建议 Python 3.12。工具运行在自己的虚拟环境，不加入业务运行依赖。
+工具只安装一份，每个工程提供一份 `supervisor.toml`：声明源码、测试、构建输入和规则。
+工具读取配置，调用对应检测器，在独立目录保存中文报告。新增工程不复制工具源码。
+配置也可以保存在工具的 `profiles` 目录，通过 `--config` 指定。
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -e .
+/home/yh/Project/code-supervisor/.venv/bin/supervisor check /path/to/project
+/home/yh/Project/code-supervisor/.venv/bin/supervisor check /path/to/project --profile full --run-commands
+/home/yh/Project/code-supervisor/.venv/bin/supervisor check /path/to/project --profile deep --run-commands
 ```
 
-无需激活环境，使用工具绝对路径即可。版本固定在 pyproject.toml；本次安装的完整依赖清单保存在 requirements-lock.txt。
+- quick：基础文档、格式、静态规则。
+- full：配置选定的类型、依赖、安全、复杂度、重复、覆盖率、构建及业务验收。
+- deep：另运行配置选定的 Python/C++ 变异与 C++ 运行时检查。
 
-## 直接试用
+模式只选择**已配置**的检查，不会自动产生测试。需要某检查时用 `required` 声明，缺项不能通过。
+详见[配置手册](docs/configuration.md)、[能力与限制](docs/capabilities.md)。
 
-在本工具目录执行：
+## 安装和验证
+
+当前支持 Linux、Python 3.11+（实测3.12）、Node.js、GCC、CMake/CTest、Doxygen。
+Ubuntu 系统依赖由管理员安装：`sudo apt-get install cmake g++ doxygen nodejs npm python3-venv git`。
+本项目安装脚本不执行 sudo，也不改业务工程：
 
 ```bash
-.venv/bin/supervisor check examples/python-demo
-.venv/bin/supervisor check examples/cpp-demo
+bash scripts/bootstrap.sh
+.venv/bin/supervisor doctor
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q -p no:cacheprovider
+.venv/bin/supervisor check examples/python-demo --profile deep --run-commands
+.venv/bin/supervisor check examples/cpp-demo --profile deep --run-commands
 ```
 
-检查车辆工程，配置保存在督导队内，不需要修改车辆源码：
+脚本联网安装固定版本依赖、原版 ub 三工具的固定提交、jscpd 与 Python 解析器。
+`doctor` 只核对工具可发现性；真实检测能力由测试和示例验证。
+本机 Doxygen 安装在 `.tools/doxygen`，来源及实测证据见 [VALIDATION.md](VALIDATION.md)。
+新机器可以使用系统 Doxygen，不分发本机二进制。工具自身依赖与业务依赖分离；
+Python 隔离测试需要的业务包及 pytest 插件仍需在执行环境准备好。
 
-```bash
-.venv/bin/supervisor check /home/yh/Project/moving_carriage_sensors \
-  --config profiles/moving-carriage.toml \
-  --output .generated/carriage
-```
-
-## 接入另一个项目
+## 新工程接入
 
 ```bash
 .venv/bin/supervisor init /path/to/project
-.venv/bin/supervisor check /path/to/project
 ```
 
-init只创建 supervisor.toml，不覆盖已有文件。确认 source/exclude/policy 后执行。
-检查不会修改源码，但会在指定输出目录生成报告；默认输出到目标工程 `.generated/supervisor`。
-工具不自动安装依赖、不提交、不推送、不调用网络 API。
+修改生成的配置；测试/构建项目可参考两个 `examples/*/supervisor.toml`。
+每项检测必须知道测试入口、构建文件和范围，无法仅凭“检查所有代码”推断正确运行方式。
+`inputs` 是复制到本次隔离目录的文件/目录；不能包含输出目录。建议 `--output` 指向工程外。
+变异和 CMake 构建在副本执行；普通自定义 `[[commands]]` 则在原工程执行。
+`--run-commands` 表示允许可信配置执行项目代码/查询漏洞库，**不是安全沙箱**。
+配置可能访问设备、网络或外部路径，使用前须审查。
 
-## 构建或测试
+## 车辆工程
 
-配置可以定义可信命令（数组，不使用 shell 拼接）：
-
-```toml
-[[commands]]
-id = "tests"
-argv = ["/path/to/project-python", "-m", "pytest", "-q"]
-profile = "full"
-timeout = 120
-finding_codes = [1]
-```
-
-`{python}` 表示督导队自己的解释器，不是目标项目解释器；ROS 测试应指定正确环境或专用入口脚本。
+基础只读检查：
 
 ```bash
-.venv/bin/supervisor check /path/to/project --profile full --run-commands
+.venv/bin/supervisor check /home/yh/Project/moving_carriage_sensors \
+  --config profiles/moving-carriage.toml --output .generated/carriage-readonly
 ```
 
-必须读取并信任配置才使用 --run-commands。它明确允许配置命令执行，命令可能写入构建/测试产物；
-这不是沙箱。Linux 超时清理本次进程组，不能保证清理主动脱离会话的守护进程。
-quick/full/deep是执行分层，不会自动发明项目缺失的测试。
-
-## 看报告
-
-- `report.txt`：中文检查结果及问题位置。
-- `report.json`：原始状态、范围、规则、哈希、工具版本和命令。
-- 工具日志：完整输出，可能含业务数据，应留在本地；不自动上传。
-
-退出码：0本次已执行范围通过；1发现问题；2执行错误或必需检查未完成。
-未配置的完整检查显式为“未执行”；无适用源码为“不适用”；完全空扫描拒绝通过。
-语义审查始终单列，不把机器通过当作人工审查完成。
-
-## 给 AI 使用
-
-告诉 AI：
-
-> 阅读 /home/yh/Project/code-supervisor/AI_REVIEW.md，按其中流程检查目标工程。
-
-AI读取Markdown后调用同一命令行，并审查工具无法判断的接口契约和业务行为。
-文档本身不授权自动改代码或推送。
-
-## 自身验证
+创建新副本，再在副本执行构建或仿真：
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q
-.venv/bin/supervisor check .
+.venv/bin/python scripts/prepare_carriage.py /home/yh/Project/moving_carriage_sensors /tmp/carriage-audit
+.venv/bin/supervisor check /tmp/carriage-audit/workspace --profile full --run-commands --output .generated/carriage-code
+.venv/bin/supervisor check /tmp/carriage-audit/workspace --config /tmp/carriage-audit/workspace/supervisor-brake.toml --profile deep --run-commands --output .generated/carriage-brake
 ```
 
-仅督导队自身测试关闭环境自动加载的 pytest 插件，避免 ROS 的插件污染工具测试环境。
-目标工程的测试仍应使用它实际需要的插件和解释器。
+创建脚本的 `--suite baseline` 或 `--suite experimental` 选择工程原有物理验收。
+其运行需要 ROS Jazzy/Gazebo、完整依赖及足够时间；不会把独立制动测试算作整车仿真通过。
+车辆接入脚本只对当前项目布局适用，其他工程直接配置通用适配器。
 
-本项目没有修改车辆工程现有的两份通用文档。通用代码规范在独立项目中保留一份，
-结构规则重新整理；工程专属规则仍归各业务项目所有。
+## 报告与自动化
+
+每次生成唯一目录：`report.txt`、`report.json`、`report.sarif`、检查器证据和日志。
+JSON 保留范围、源码/规范/配置 SHA256、Git 状态及各项结果。
+退出0：本次选定检查通过；1：发现问题；2：执行错误或选定必需检查未完成。
+“不适用”和“不属于本模式”明确记录，不能等同于整项目通过。
+
+```bash
+.venv/bin/supervisor compare /path/old/report.json /path/new/report.json
+```
+
+比较不自动豁免历史问题；改了范围或配置会提示，删除诊断不等于修复。
+GitHub Actions 配置位于 `.github/workflows/quality.yml`，上传报告而非完整源码副本。
+本地钩子配置为 `.pre-commit-config.yaml`，安装 pre-commit 后运行 `pre-commit install` 才生效。
+工具不会自动提交、推送、发布或发送评论。漏洞查询会联网；凭据扫描不联网验证密钥。
+报告和日志可能包含业务数据，分享前需检查。
+
+## AI 与人分别做什么
+
+告诉 AI：“阅读 `/home/yh/Project/code-supervisor/AI_REVIEW.md`，按其中流程审查目标工程。”
+AI 阅读规范、运行同一 CLI、解释候选问题，并审查单位、物理假设、职责和契约真实性。
+CLI 单独运行也能完成已实现的机器检测；不需要 AI。
+两者都不能保证项目完美，覆盖率和变异检出率也不是代码正确率。

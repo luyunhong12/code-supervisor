@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.16)
+project(supervisor_cpp_demo LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+enable_testing()
+add_executable(distance_test test_distance.cc)
+add_test(NAME distance COMMAND distance_test)
