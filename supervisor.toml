@@ -1,0 +1,16 @@
+version = 1
+name = "code-supervisor"
+source = ["src", "tests"]
+checks = ["python-docs", "black", "ruff"]
+policy = ["docs/coding-standard.md", "docs/architecture.md"]
+
+[required]
+full = ["tests"]
+deep = ["tests", "mutation"]
+
+[[commands]]
+id = "tests"
+argv = ["env", "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1", "{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider"]
+profile = "full"
+timeout = 120
+finding_codes = [1]

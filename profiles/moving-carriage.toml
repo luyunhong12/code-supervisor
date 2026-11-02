@@ -1,0 +1,12 @@
+version = 1
+name = "moving_carriage_sensors"
+source = ["src", "tools"]
+exclude = []
+checks = ["python-docs", "black", "ruff", "cpp-docs"]
+policy = ["docs/0-0、代码规范（通用）.md", "docs/0、代码规范.md", "docs/1、代码结构与拆分规则.md"]
+
+# 当前工程存在并行修改，先只接入只读基础检查。
+# 构建和验收命令需在稳定快照上确认；此处不会假装 full/deep 已接通。
+[required]
+full = ["build", "tests", "crapper", "dryer"]
+deep = ["build", "tests", "crapper", "dryer", "mutator", "simulation", "cpp-runtime"]

@@ -1,0 +1,4 @@
+version = 1
+name = "python-demo"
+source = ["."]
+checks = ["python-docs", "black", "ruff", "cpp-docs"]
