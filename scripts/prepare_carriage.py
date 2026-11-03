@@ -11,7 +11,7 @@ from code_supervisor.tasks import snapshot
 CONFIG = """version = 1
 name = "carriage-isolated"
 source = ["src", "tools"]
-checks = ["python-docs", "black", "ruff", "cpp-docs", "dryer", "cpp-complexity", "cpp-duplicates", "acceptance"]
+checks = ["python-docs", "black", "ruff", "cpp-docs", "parameter-docs", "dryer", "cpp-complexity", "cpp-duplicates", "acceptance"]
 policy = ["docs/0-0、代码规范（通用）.md", "docs/1-1、代码结构与拆分规则.md"]
 [settings.acceptance]
 inputs = ["src", "tools", "model", "supervisor_carriage.py", "supervisor-copy.json", "pyproject.toml", "pytest.ini"]
@@ -43,7 +43,23 @@ def main():
     shutil.copyfile(
         Path(__file__).with_name("carriage_suite.py"), work / "supervisor_carriage.py"
     )
-    (work / "supervisor.toml").write_text(CONFIG.replace("SUITE", args.suite))
+    config_paths = [
+        p.relative_to(work).as_posix()
+        for p in sorted((work / "src").glob("*/config"))
+        if p.is_dir()
+    ]
+    parameter_rule = (
+        "\n[settings.parameter-docs]\npaths = " + json.dumps(config_paths) + "\n"
+    )
+    python_files = sorted(
+        p.relative_to(work).as_posix()
+        for folder in ("src", "tools")
+        for p in (work / folder).rglob("*.py")
+    )
+    dryer_rule = "\n[settings.dryer]\nfiles = " + json.dumps(python_files) + "\n"
+    (work / "supervisor.toml").write_text(
+        CONFIG.replace("SUITE", args.suite) + parameter_rule + dryer_rule
+    )
     harness = work / "supervisor-native"
     harness.mkdir()
     (harness / "CMakeLists.txt").write_text(

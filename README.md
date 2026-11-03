@@ -100,3 +100,7 @@ GitHub Actions 配置位于 `.github/workflows/quality.yml`，上传报告而非
 AI 阅读规范、运行同一 CLI、解释候选问题，并审查单位、物理假设、职责和契约真实性。
 CLI 单独运行也能完成已实现的机器检测；不需要 AI。
 两者都不能保证项目完美，覆盖率和变异检出率也不是代码正确率。
+
+## 参数注释检查
+
+新增`parameter-docs`：检查Python/C++函数参数与显式配置范围中的YAML键是否有对应中文说明。车辆基础和副本配置已启用。规则与例外见AI_REVIEW.md，配置方式见docs/configuration.md。

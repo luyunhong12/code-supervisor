@@ -5,6 +5,7 @@
 | 检查 ID | 使用实现 | 检测内容与边界 |
 |---|---|---|
 | python-docs / black / ruff | AST、Black、Ruff | 中文 Google 文档基础规则、格式、语法及静态错误；不是 Google 全文认证 |
+| parameter-docs | AST、tree-sitter、YAML语法节点 | 逐名检查函数参数与YAML配置键中文说明；解析失败/其他配置格式明确报告，不能证明语义真实 |
 | pyright | Pyright | 静态类型；缺存根保留诊断，动态行为仍需测试 |
 | dependencies | 本项目 AST/import/include 规则 | 明确禁止的模块依赖，支持相对导入；不推断架构合理性，不检查动态加载 |
 | security | Bandit | Python 安全模式；候选有误报，不覆盖完整攻击面 |

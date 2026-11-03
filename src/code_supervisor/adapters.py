@@ -5,6 +5,7 @@ import math
 
 # 模块、函数、语言、默认模式、是否执行项目代码或网络请求。
 REGISTRY = {
+    "parameter-docs": ("parameter_docs", "parameter_docs", None, "quick", False),
     "pyright": ("audit", "pyright", "python", "full", False),
     "dependencies": ("audit", "dependencies", None, "full", False),
     "security": ("audit", "security", "python", "full", False),
@@ -27,6 +28,7 @@ REGISTRY = {
 COMMON = {"profile", "timeout", "files"}
 NATIVE = {"inputs", "cmake_source", "configure_args", "jobs"}
 OPTIONS = {
+    "parameter-docs": {"paths"},
     "pyright": {"config"},
     "dependencies": {"forbidden", "include_forbidden", "module_roots"},
     "security": set(),

@@ -34,3 +34,7 @@
 规范叠加：Python 使用项目约定的 Google 风格中文说明与 Black；C++ 使用 Doxygen 中文说明。
 Doxygen只处理文档，C++命名、格式、所有权等另按项目代码规范审查。
 项目规则参见 [代码规范](coding-standard.md) 和 [结构规则](architecture.md)。
+
+## 新增强制门禁：逐参数中文说明（2026-11-03）
+
+在原24项之外，逐个检查函数具名参数和配置参数的对应中文说明。执行parameter-docs并核对其覆盖范围、例外和未解析项；不能把文件头注释当作所有参数说明。规则细节见AI_REVIEW.md和configuration.md。

@@ -2,7 +2,7 @@ version = 1
 name = "moving_carriage_sensors"
 source = ["src", "tools"]
 exclude = []
-checks = ["python-docs", "black", "ruff", "cpp-docs"]
+checks = ["python-docs", "black", "ruff", "cpp-docs", "parameter-docs"]
 policy = ["docs/0-0、代码规范（通用）.md", "docs/0、代码规范.md", "docs/1、代码结构与拆分规则.md"]
 
 # 当前工程存在并行修改，先只接入只读基础检查。
@@ -10,3 +10,6 @@ policy = ["docs/0-0、代码规范（通用）.md", "docs/0、代码规范.md", 
 [required]
 full = ["build", "tests", "crapper", "dryer"]
 deep = ["build", "tests", "crapper", "dryer", "mutator", "simulation", "cpp-runtime"]
+
+[settings.parameter-docs]
+paths = ["src/carriage_control/config", "src/carriage_description/config", "src/carriage_hook_control/config", "src/carriage_ros_bridge/config", "src/carriage_sensors/config", "src/carriage_simulation/config", "src/carriage_worlds/config", "src/coupler_17_control/config", "src/coupler_17_description/config", "src/coupler_17_test/config", "src/railway_track_description/config"]
