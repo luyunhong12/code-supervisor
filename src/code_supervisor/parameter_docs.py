@@ -102,7 +102,7 @@ def doxygen_arguments(doc):
     Returns:
         参数名称到说明的映射。
     """
-    cleaned = re.sub(r"^\s*(?:/\*\*|///|\*)\s?", "", doc, flags=re.M).replace("*/", "")
+    cleaned = re.sub(r"^\s*(?:/\*\*|///|\*)\s?", "", doc.replace("*/", ""), flags=re.M)
     pattern = r"[@\\]param\s*(?:\[[^\]]+\]\s*)?([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s+(.*?)(?=[@\\]\w+|$)"
     result = {}
     for match in re.finditer(pattern, cleaned, re.S):

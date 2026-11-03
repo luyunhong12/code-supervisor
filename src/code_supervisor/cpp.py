@@ -14,9 +14,33 @@ def nodes(node):
 
 
 def preceding(node, source):
-    """读取定义前紧邻的 Doxygen 块或连续 /// 行，允许模板包装。"""
-    if node.parent and node.parent.type == "template_declaration":
-        node = node.parent
+    """读取定义前紧邻的说明，穿过模板、类型声明或单定义链接包装。
+
+    Args:
+        node: 待关联文档的函数或类型语法节点。
+        source: 原始UTF-8源码字节，用于检查注释间是否存在其他代码。
+
+    Returns:
+        紧邻的Doxygen文本；没有匹配说明时为空字符串。
+    """
+    while node.parent:
+        parent = node.parent
+        transparent = (
+            parent.type == "template_declaration"
+            or (
+                parent.type in {"declaration", "field_declaration"}
+                and parent.child_by_field_name("type") == node
+                and parent.child_by_field_name("declarator") is None
+            )
+            or (
+                parent.type == "linkage_specification"
+                and parent.child_by_field_name("body") == node
+                and node.type != "declaration_list"
+            )
+        )
+        if not transparent:
+            break
+        node = parent
     previous = node.prev_named_sibling
     comments = []
     end = node.start_byte
