@@ -10,7 +10,7 @@ def test_nested_type_and_linkage_docs(tmp_path):
     Args:
         tmp_path: pytest独立目录，保存待扫描的C++样例。
     """
-    source = '''/** @file
+    source = """/** @file
  * @brief 文档测试。
  */
 /** @brief 外层类型。 */
@@ -22,7 +22,7 @@ class Outer {
  * @param value 输入整数。
  */
 extern "C" int convert(int value) { return value; }
-'''
+"""
     (tmp_path / "sample.hh").write_text(source)
     result = cpp_docs(tmp_path, ["sample.hh"])
     assert result["status"] == "pass", result
@@ -38,7 +38,7 @@ def test_linkage_block_does_not_document_its_children(tmp_path):
     Args:
         tmp_path: pytest独立目录，保存缺少函数说明的样例。
     """
-    source = '''/** @file
+    source = """/** @file
  * @brief 文档测试。
  */
 /** @brief 链接块说明。
@@ -47,7 +47,7 @@ def test_linkage_block_does_not_document_its_children(tmp_path):
 extern "C" {
  int convert(int value) { return value; }
 }
-'''
+"""
     (tmp_path / "sample.hh").write_text(source)
     result = cpp_docs(tmp_path, ["sample.hh"])
     assert result["status"] == "fail"

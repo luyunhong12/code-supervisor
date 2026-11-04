@@ -137,7 +137,7 @@ def qt_parameter_source(source):
     for match in re.finditer(pattern, source):
         if any(start < match.end() and end > match.start() for start, end in protected):
             continue
-        result[match.start():match.end()] = b" " * (match.end() - match.start())
+        result[match.start() : match.end()] = b" " * (match.end() - match.start())
     for match in re.finditer(rb"(?m)^[ \t]*(signals)[ \t]*:", source):
         start, end = match.span(1)
         if not any(left < end and right > start for left, right in protected):
