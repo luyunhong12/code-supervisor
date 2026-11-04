@@ -111,6 +111,40 @@ def doxygen_arguments(doc):
     return result
 
 
+def qt_parameter_source(source):
+    """保留行列位置地移除明确的独立Qt元对象声明，不豁免真实函数。
+
+    仅识别独占行Q_OBJECT和简单READ/NOTIFY属性；复杂宏保持原样并报告
+    解析限制。它不是预处理器，也不宣称检查宏展开产生的参数。
+
+    Args:
+        source: 原始UTF-8源码字节。
+
+    Returns:
+        等长的参数解析输入，原换行位置不变。
+    """
+    from tree_sitter import Language, Parser
+    import tree_sitter_cpp
+
+    tree = Parser(Language(tree_sitter_cpp.language())).parse(source)
+    protected = [
+        (node.start_byte, node.end_byte)
+        for node in nodes(tree.root_node)
+        if node.type in {"comment", "string_literal", "raw_string_literal"}
+    ]
+    pattern = rb"(?m)^[ \t]*(?:Q_OBJECT|Q_PROPERTY\([ \t]*[A-Za-z_]\w*(?:::\w+)*[ \t]+[A-Za-z_]\w*[ \t]+READ[ \t]+[A-Za-z_]\w*[ \t]+NOTIFY[ \t]+[A-Za-z_]\w*[ \t]*\))[ \t]*$"
+    result = bytearray(source)
+    for match in re.finditer(pattern, source):
+        if any(start < match.end() and end > match.start() for start, end in protected):
+            continue
+        result[match.start():match.end()] = b" " * (match.end() - match.start())
+    for match in re.finditer(rb"(?m)^[ \t]*(signals)[ \t]*:", source):
+        start, end = match.span(1)
+        if not any(left < end and right > start for left, right in protected):
+            result[start:end] = b"public "
+    return bytes(result)
+
+
 def cpp_parameters(source):
     """读取可解析C++声明/定义的具名形参，解析错误不会当作全部通过。
 
@@ -123,6 +157,7 @@ def cpp_parameters(source):
     from tree_sitter import Language, Parser
     import tree_sitter_cpp
 
+    source = qt_parameter_source(source)
     tree = Parser(Language(tree_sitter_cpp.language())).parse(source)
     records, exceptions = [], []
     for node in targets(tree):

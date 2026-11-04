@@ -119,3 +119,28 @@ def test_adapter_reports_missing_parameter_and_unsupported_config(tmp_path):
     assert len(result["findings"]) == 2
     assert result["unparsed"][0]["file"] == "a.json"
     assert Path(result["evidence"]).exists()
+
+
+def test_qt_properties_do_not_hide_real_parameters():
+    """元对象宏不产生伪形参，后续真实参数仍按原行号检查。"""
+    source = b"class C {\n Q_OBJECT\n Q_PROPERTY(QString speed READ Speed NOTIFY Updated)\n signals:\n void command(int value);\n};"
+    rows, exceptions, complete = cpp_parameters(source)
+    assert complete and not exceptions
+    assert [(r["line"], r["parameter"], r["description"]) for r in rows] == [(5, "value", "")]
+
+
+@pytest.mark.parametrize("macro", ["Q_PROPERTY(int x READ x", "Q_PROPERTY(int x UNKNOWN x)", "UNKNOWN_MACRO(int x)"])
+def test_unsupported_meta_syntax_remains_visible(macro):
+    """不闭合及不认识的元语法仍返回解析失败，不能整体跳过头文件。
+
+    Args:
+        macro: 不完整或不支持的独立宏声明。
+    """
+    assert not cpp_parameters(("class C {\n" + macro + "\n};").encode())[2]
+
+
+def test_qt_mask_keeps_literal_and_comment_bytes():
+    """字符串和块注释中的宏样文本不可改写。"""
+    from code_supervisor.parameter_docs import qt_parameter_source
+    source = b'const char *s = R"(\nQ_OBJECT\n)";\n/*\nQ_OBJECT\n*/'
+    assert qt_parameter_source(source) == source
