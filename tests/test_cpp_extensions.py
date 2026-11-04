@@ -47,3 +47,31 @@ def test_unknown_errors_remain_visible(source):
         source: 包含未支持或无效语法的源码。
     """
     assert not cpp_parameters(source.encode())[2]
+
+
+def test_doxygen_uses_same_extension_parser(tmp_path):
+    """文件与参数检查应共享适配，同时继续报告真实缺注释函数。
+
+    Args:
+        tmp_path: 保存独立C++文档夹具的目录。
+    """
+    from code_supervisor.cpp import cpp_docs
+
+    source = tmp_path / "fixture.hh"
+    source.write_text(
+        "/** @file @brief 测试文件。 */\n"
+        "/** @brief 插件类型。 */\nclass Demo {\nQ_OBJECT\n"
+        "Q_PROPERTY(int count READ Count NOTIFY Changed)\npublic:\n"
+        "/** @brief 读取数量。 */ int Count();\n"
+        "signals:\n/** @brief 通知变化。 */ void Changed();\n};\n"
+        "GZ_ADD_PLUGIN(Demo, Base)\n"
+        "/** @brief 编译器符号声明。 */ extern int symbol() asm(SYMBOL);\n"
+        "void undocumented();\n"
+    )
+    result = cpp_docs(tmp_path, [source.name])
+    assert result["status"] == "fail"
+    assert result["unparsed_files"] == []
+    assert len(result["findings"]) == 1
+    assert result["findings"][0]["rule"] == "CPP-DOC"
+    source.write_text(source.read_text() + "UNKNOWN_REGISTRATION(Demo)\n")
+    assert cpp_docs(tmp_path, [source.name])["status"] == "error"

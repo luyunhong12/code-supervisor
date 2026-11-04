@@ -76,6 +76,93 @@ def targets(tree):
                     yield node
 
 
+def qt_parameter_source(source):
+    """保留行列位置地移除明确的独立Qt元对象声明，不豁免真实函数。
+
+    仅识别独占行Q_OBJECT和简单READ/NOTIFY属性；复杂宏保持原样并报告
+    解析限制。它不是预处理器，也不宣称检查宏展开产生的参数。
+
+    Args:
+        source: 原始UTF-8源码字节。
+
+    Returns:
+        等长的参数解析输入，原换行位置不变。
+    """
+    from tree_sitter import Language, Parser
+    import tree_sitter_cpp
+
+    tree = Parser(Language(tree_sitter_cpp.language())).parse(source)
+    protected = [
+        (node.start_byte, node.end_byte)
+        for node in nodes(tree.root_node)
+        if node.type in {"comment", "string_literal", "raw_string_literal"}
+    ]
+    pattern = rb"(?m)^[ \t]*(?:Q_OBJECT|Q_PROPERTY\([ \t]*[A-Za-z_]\w*(?:::\w+)*[ \t]+[A-Za-z_]\w*[ \t]+READ[ \t]+[A-Za-z_]\w*[ \t]+NOTIFY[ \t]+[A-Za-z_]\w*[ \t]*\))[ \t]*$"
+    result = bytearray(source)
+    for match in re.finditer(pattern, source):
+        if any(start < match.end() and end > match.start() for start, end in protected):
+            continue
+        result[match.start() : match.end()] = b" " * (match.end() - match.start())
+    for match in re.finditer(rb"(?m)^[ \t]*(signals)[ \t]*:", source):
+        start, end = match.span(1)
+        if not any(left < end and right > start for left, right in protected):
+            result[start:end] = b"public "
+    return bytes(result)
+
+
+def cpp_parameter_source(source):
+    """适配不声明形参的插件注册和编译器表达式，保留换行与真实函数声明。
+
+    仅处理语法树中明确识别的Gazebo注册调用缺分号、成员指针运算符和
+    GNU声明尾部的asm符号名。未知错误保留，不能借此跳过函数签名。
+
+    Args:
+        source: 原始UTF-8源码字节。
+    """
+    from tree_sitter import Language, Parser
+    import tree_sitter_cpp
+
+    source = qt_parameter_source(source)
+    tree = Parser(Language(tree_sitter_cpp.language())).parse(source)
+    edits = []
+    protected = [
+        (n.start_byte, n.end_byte)
+        for n in nodes(tree.root_node)
+        if n.type in {"comment", "string_literal", "raw_string_literal"}
+    ]
+    for match in re.finditer(rb"(?<=[A-Za-z_0-9)])->\*(?=[A-Za-z_])", source):
+        if not any(
+            left < match.end() and right > match.start() for left, right in protected
+        ):
+            edits.append((match.start(), match.end(), b".  "))
+    pending = [tree.root_node]
+    while pending:
+        node = pending.pop()
+        pending.extend(node.children)
+        parent = node.parent
+        if (
+            node.is_missing
+            and node.type == ";"
+            and parent.type == "expression_statement"
+        ):
+            call = next(
+                (n for n in parent.named_children if n.type == "call_expression"), None
+            )
+            function = call.child_by_field_name("function") if call else None
+            if function and function.text in {
+                b"GZ_ADD_PLUGIN",
+                b"GZ_ADD_PLUGIN_ALIAS",
+                b"GZ_PHYSICS_ADD_PLUGIN",
+            }:
+                edits.append((call.end_byte, call.end_byte, b";"))
+        elif node.type == "ERROR" and parent.type == "declaration":
+            if re.fullmatch(rb"asm\([A-Za-z_]\w*\)", node.text):
+                edits.append((node.start_byte, node.end_byte, b" " * len(node.text)))
+    for start, end, replacement in sorted(edits, reverse=True):
+        source = source[:start] + replacement + source[end:]
+    return source
+
+
 def cpp_docs(root, files):
     """检查文件、可解析类型和函数的中文 Doxygen 概述。
 
@@ -96,7 +183,7 @@ def cpp_docs(root, files):
     errors = []
     count = 0
     for file in files:
-        source = (root / file).read_bytes()
+        source = cpp_parameter_source((root / file).read_bytes())
         tree = parser.parse(source)
         if tree.root_node.has_error:
             errors.append(file)
