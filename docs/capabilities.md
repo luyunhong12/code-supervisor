@@ -58,3 +58,11 @@ coverage/gcovr、Hypothesis 示例性质测试、官方 Doxygen，以及原版 u
 - [Lizard](https://github.com/terryyin/lizard)、[jscpd](https://github.com/kucherenko/jscpd)、[clang-tidy](https://clang.llvm.org/extra/clang-tidy/)
 
 第三方实现由安装器获取，本仓库不提交工具二进制；再次分发时仍应遵守各项目许可证。
+
+## Qt 参数文档解析边界
+
+C++ 参数检查识别独立行 `Q_OBJECT`、简单的
+`Q_PROPERTY(TYPE name READ getter NOTIFY signal)` 及 `signals:`，
+保留源码行号；注释和字符串中的同名文本不会作为宏处理。
+复杂或多行属性宏仍可能产生解析错误，需要单独适配，不能当作已检查通过。
+这只是参数文档解析支持，不代表执行 Qt 元对象编译器或验证信号槽行为。

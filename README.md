@@ -23,6 +23,25 @@ AI 工作说明是普通 [AI_REVIEW.md](AI_REVIEW.md)，没有 Skill，也不需
 模式只选择**已配置**的检查，不会自动产生测试。需要某检查时用 `required` 声明，缺项不能通过。
 详见[配置手册](docs/configuration.md)、[能力与限制](docs/capabilities.md)。
 
+## 获取与更新
+
+独立仓库：[luyunhong12/code-supervisor](https://github.com/luyunhong12/code-supervisor)，
+默认分支为 `main`，当前为私有仓库，需要获授权的 GitHub 账号。
+源码、中文规范、示例、固定依赖清单和 CI 配置均在仓库中；
+不上传 `.venv`、`.tools`、业务工程或本机检查报告。
+
+```bash
+git clone https://github.com/luyunhong12/code-supervisor.git
+cd code-supervisor
+bash scripts/bootstrap.sh
+.venv/bin/supervisor init /absolute/path/to/your-project
+# 先按目标工程调整 supervisor.toml 中的源码、测试和构建入口。
+.venv/bin/supervisor check /absolute/path/to/your-project
+```
+
+已有安装更新时，在工作区干净的前提下运行 `git pull --ff-only`，
+再运行 `bash scripts/bootstrap.sh` 同步固定依赖。完整和深度检查的命令见下文。
+
 ## 安装和验证
 
 当前支持 Linux、Python 3.11+（实测3.12）、Node.js、GCC、CMake/CTest、Doxygen。
