@@ -5,6 +5,12 @@ import hashlib
 import re
 
 from .checks import CHINESE, finding
+from .configuration_docs import (
+    json_parameters,
+    xml_parameters,
+    markdown_descriptions,
+    attach_descriptions,
+)
 from .config import inside, walk
 from .cpp import nodes, preceding, targets
 from .tasks import CheckError, save
@@ -421,6 +427,27 @@ def parameter_docs(root, files, options, output):
                     )
             elif (root / name).suffix.lower() in {".yaml", ".yml"}:
                 rows, skipped = yaml_parameters(data.decode("utf-8-sig")), []
+            elif (root / name).suffix.lower() in {".json", ".xml", ".sdf"}:
+                document = options.get("documentation", {}).get(name)
+                if not document:
+                    raise CheckError(
+                        "JSON/XML配置必须显式提供documentation逐参数Markdown说明"
+                    )
+                doc_path = inside(root, document)
+                if (root / document).is_symlink():
+                    raise CheckError("参数说明文档不能为符号链接")
+                doc_data = doc_path.read_bytes()
+                hashes[document] = hashlib.sha256(doc_data).hexdigest()
+                parse = (
+                    json_parameters
+                    if (root / name).suffix.lower() == ".json"
+                    else xml_parameters
+                )
+                rows = attach_descriptions(
+                    parse(data.decode("utf-8-sig")),
+                    markdown_descriptions(doc_data.decode("utf-8-sig")),
+                )
+                skipped = []
             else:
                 errors.append(
                     dict(file=name, reason="当前参数注释适配器未实现此配置格式")
@@ -463,5 +490,5 @@ def parameter_docs(root, files, options, output):
         exceptions=exceptions,
         unparsed=errors,
         evidence=evidence,
-        scope="显式Python/C++函数形参与YAML映射键；self/cls接收者、C++未命名形参单列；其他配置格式未实现时报告错误。注释单位、范围与真实性仍须语义审查。",
+        scope="显式Python/C++函数形参、YAML映射键及有逐路径Markdown说明的JSON/XML参数；self/cls接收者、C++未命名形参单列；其他配置格式未实现时报告错误。注释单位、范围与真实性仍须语义审查。",
     )

@@ -28,7 +28,7 @@ REGISTRY = {
 COMMON = {"profile", "timeout", "files"}
 NATIVE = {"inputs", "cmake_source", "configure_args", "jobs"}
 OPTIONS = {
-    "parameter-docs": {"paths"},
+    "parameter-docs": {"paths", "documentation"},
     "pyright": {"config"},
     "dependencies": {"forbidden", "include_forbidden", "module_roots"},
     "security": set(),
@@ -57,6 +57,15 @@ def validate_settings(settings):
     for name, options in settings.items():
         if not isinstance(options, dict) or set(options) - (COMMON | OPTIONS[name]):
             raise ValueError(f"{name} 含未知设置项")
+        if "documentation" in options:
+            documentation = options["documentation"]
+            if not isinstance(documentation, dict) or not all(
+                isinstance(key, str) and key and isinstance(value, str) and value
+                for key, value in documentation.items()
+            ):
+                raise ValueError(
+                    "documentation必须为配置路径到Markdown路径的非空字符串映射"
+                )
         if options.get("profile", "full") not in {"quick", "full", "deep"}:
             raise ValueError(f"{name} profile 无效")
         for key in (

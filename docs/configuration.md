@@ -162,3 +162,20 @@ Python按Args逐名核对，C++按@param逐名核对；YAML按映射键核对同
 文件头不能代替后续键的说明，流式映射的子键不能借用容器说明。
 源码语法错误、C++宏解析不完整、其他未支持配置格式、配置检查中变化均报告错误。
 函数参数注释规则不会自动验证物理单位及描述真实性，须结合24项清单审查。
+
+## JSON/XML参数说明
+
+JSON、XML、SDF必须通过`settings.parameter-docs.documentation`显式关联逐参数Markdown表格；YAML继续读取紧邻注释。
+
+```toml
+[settings.parameter-docs]
+paths = ["config"]
+[settings.parameter-docs.documentation]
+"config/settings.json" = "docs/settings-parameters.md"
+```
+
+Markdown使用两列：`参数路径 | 中文说明`。JSON路径采用JSON Pointer，如`/parts/*/mass_kg`；数组标量由所属键说明。
+XML枚举元素与每个属性，例如`/gui[0]/plugin[0]/@filename`；方括号为同名兄弟零基序号。
+`*`只匹配一个非空路径段。容器说明不能代替子字段，未使用、重复或重叠路径规则会报错。
+JSON记录定位到文件首行，XML保存实际元素行号。重复JSON键、XML DTD和外部实体拒绝解析。
+文档内容也计入报告SHA256并检查扫描期间是否变化。机器只验证逐参数存在中文说明，单位、范围和真实性仍需结合业务审查。

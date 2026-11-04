@@ -122,4 +122,4 @@ CLI 单独运行也能完成已实现的机器检测；不需要 AI。
 
 ## 参数注释检查
 
-新增`parameter-docs`：检查Python/C++函数参数与显式配置范围中的YAML键是否有对应中文说明。车辆基础和副本配置已启用。规则与例外见AI_REVIEW.md，配置方式见docs/configuration.md。
+新增`parameter-docs`：检查Python/C++函数参数与显式配置范围中的YAML键及有逐路径Markdown说明的JSON/XML参数是否有对应中文说明。车辆基础和副本配置已启用。规则与例外见AI_REVIEW.md，配置方式见docs/configuration.md。

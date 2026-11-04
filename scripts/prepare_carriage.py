@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+import tomllib
 
 from code_supervisor.tasks import snapshot
 
@@ -51,6 +52,15 @@ def main():
     parameter_rule = (
         "\n[settings.parameter-docs]\npaths = " + json.dumps(config_paths) + "\n"
     )
+    parameter_config = root / "supervisor/parameters.toml"
+    if parameter_config.is_file():
+        settings = tomllib.loads(parameter_config.read_text()).get("settings", {})
+        documentation = settings.get("parameter-docs", {}).get("documentation", {})
+        parameter_rule += "\n[settings.parameter-docs.documentation]\n"
+        for source, document in documentation.items():
+            if not (work / document).is_file():
+                raise ValueError(f"验收副本缺少参数说明：{document}")
+            parameter_rule += json.dumps(source) + " = " + json.dumps(document) + "\n"
     python_files = sorted(
         p.relative_to(work).as_posix()
         for folder in ("src", "tools")

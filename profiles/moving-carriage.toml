@@ -13,3 +13,10 @@ deep = ["build", "tests", "crapper", "dryer", "mutator", "simulation", "cpp-runt
 
 [settings.parameter-docs]
 paths = ["src/carriage_control/config", "src/carriage_description/config", "src/carriage_hook_control/config", "src/carriage_ros_bridge/config", "src/carriage_sensors/config", "src/carriage_simulation/config", "src/carriage_worlds/config", "src/coupler_17_control/config", "src/coupler_17_description/config", "src/coupler_17_test/config", "src/railway_track_description/config"]
+
+[settings.parameter-docs.documentation]
+# XML/JSON的逐参数Markdown说明；YAML继续使用文件内紧邻注释。
+"src/carriage_simulation/config/single_carriage_gui.xml" = "docs/parameters/single-carriage-gui.md"
+"src/coupler_17_description/config/inspection.json" = "docs/parameters/coupler-inspection.md"
+"src/coupler_17_test/config/motion_candidates.json" = "docs/parameters/motion-candidates.md"
+"src/coupler_17_test/config/pair_gui.xml" = "docs/parameters/coupler-pair-gui.md"
