@@ -1,11 +1,13 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "code-supervisor-local"
 version = "0.2.0"
 description = "跨项目中文代码督导：Python Google 文档、C++ Doxygen 与证据报告"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "licenses/*.txt"]
 requires-python = ">=3.11"
 dependencies = ["black==24.10.0", "ruff==0.14.3", "tree-sitter==0.25.2", "tree-sitter-cpp==0.23.4"]
 

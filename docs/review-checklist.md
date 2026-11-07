@@ -1,6 +1,6 @@
 # ub-mode 24 项督导清单（中文工作表）
 
-按本次会话已核对的 ub-mode 文本整理。它是普通 Markdown，不注册 Skill。
+本工作表参考 Robert C. Martin 的 ub-mode，由本项目整理为中文并补充检查方法。原作采用 [MIT 许可证](../licenses/ub-mode-MIT.txt)。它是普通 Markdown，不注册 Skill。
 每次审查为每项记录：适用范围、证据、结论（通过/问题/待判断/未执行/不适用）、下一步。
 下面的“工具支持”不是自动证明整条原则已经满足。
 
