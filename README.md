@@ -1,125 +1,54 @@
-# 代码督导队 0.2.0
+# Code Supervisor · 代码督导队
 
-独立安装、多个 Python/C++ 工程共用的代码检查工具。命令行不调用 AI；
-AI 工作说明是普通 [AI_REVIEW.md](AI_REVIEW.md)，没有 Skill，也不需要模型密钥。
-原 ub-mode 原则整理为 [24项中文督导清单](docs/review-checklist.md)。
+Code Supervisor 是一个给 Python 和 C++ 工程做代码审查的命令行工具。工具装一份，每个工程用自己的 `supervisor.toml` 指定要查的代码、规则和测试。你可以直接在终端运行，拿到中文报告；整个检查过程不需要 AI 或模型密钥。
 
-## 你实际会怎样用
+## 为什么我用 Markdown
 
-工具只安装一份，每个工程提供一份 `supervisor.toml`：声明源码、测试、构建输入和规则。
-工具读取配置，调用对应检测器，在独立目录保存中文报告。新增工程不复制工具源码。
-配置也可以保存在工具的 `profiles` 目录，通过 `--config` 指定。
+我做这个项目，是因为我自己不习惯通过 Skill 管理代码审查规则。我更习惯打开一份 Markdown：看到某条规则不适合自己的工程，就能直接改；想请另一个 AI 帮忙，也只需要让它读同一份文件。
 
-```bash
-/home/yh/Project/code-supervisor/.venv/bin/supervisor check /path/to/project
-/home/yh/Project/code-supervisor/.venv/bin/supervisor check /path/to/project --profile full --run-commands
-/home/yh/Project/code-supervisor/.venv/bin/supervisor check /path/to/project --profile deep --run-commands
-```
+因此，我把怎么审查、哪些地方需要人判断写进了 [AI_REVIEW.md](AI_REVIEW.md)，把可以重复执行的检查交给命令行。比如，工具能找出两段相似的代码，但它们是否表达同一条业务规则、将来是否应该一起改，仍然要结合代码判断。
 
-- quick：基础文档、格式、静态规则。
-- full：配置选定的类型、依赖、安全、复杂度、重复、覆盖率、构建及业务验收。
-- deep：另运行配置选定的 Python/C++ 变异与 C++ 运行时检查。
+## 第一次运行
 
-模式只选择**已配置**的检查，不会自动产生测试。需要某检查时用 `required` 声明，缺项不能通过。
-详见[配置手册](docs/configuration.md)、[能力与限制](docs/capabilities.md)。
-
-## 获取与更新
-
-独立仓库：[luyunhong12/code-supervisor](https://github.com/luyunhong12/code-supervisor)，
-默认分支为 `main`，当前为私有仓库，需要获授权的 GitHub 账号。
-源码、中文规范、示例、固定依赖清单和 CI 配置均在仓库中；
-不上传 `.venv`、`.tools`、业务工程或本机检查报告。
+下面以 Linux 为例。安装需要 Git、Python 3.11 或更新版本（含 venv）、Node.js 和 npm，以及下载依赖的网络连接。仓库目前是私有的，克隆需要访问权限。
 
 ```bash
 git clone https://github.com/luyunhong12/code-supervisor.git
 cd code-supervisor
 bash scripts/bootstrap.sh
-.venv/bin/supervisor init /absolute/path/to/your-project
-# 先按目标工程调整 supervisor.toml 中的源码、测试和构建入口。
-.venv/bin/supervisor check /absolute/path/to/your-project
+.venv/bin/supervisor check examples/python-demo
 ```
 
-已有安装更新时，在工作区干净的前提下运行 `git pull --ff-only`，
-再运行 `bash scripts/bootstrap.sh` 同步固定依赖。完整和深度检查的命令见下文。
+最后一条命令会按[示例配置](examples/python-demo/supervisor.toml)做快速检查。打开本次输出目录里的 **report.txt**，先看哪些项执行了，再看发现的问题。退出码 0 表示本次选定的检查通过，1 表示发现问题，2 表示执行出错或必需项未完成。需要程序读取或对比两次结果时，使用同目录下的 report.json。
 
-## 安装和验证
+## 在自己的工程里使用
 
-当前支持 Linux、Python 3.11+（实测3.12）、Node.js、GCC、CMake/CTest、Doxygen。
-Ubuntu 系统依赖由管理员安装：`sudo apt-get install cmake g++ doxygen nodejs npm python3-venv git`。
-本项目安装脚本不执行 sudo，也不改业务工程：
+在 Supervisor 仓库目录执行下面两步，将路径换成目标工程的实际路径：
 
 ```bash
-bash scripts/bootstrap.sh
-.venv/bin/supervisor doctor
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q -p no:cacheprovider
-.venv/bin/supervisor check examples/python-demo --profile deep --run-commands
-.venv/bin/supervisor check examples/cpp-demo --profile deep --run-commands
+.venv/bin/supervisor init /path/to/your-project
+# 打开目标工程新生成的 supervisor.toml，填好源码范围、测试入口及必需检查。
+.venv/bin/supervisor check /path/to/your-project --profile full --run-commands
 ```
 
-脚本联网安装固定版本依赖、原版 ub 三工具的固定提交、jscpd 与 Python 解析器。
-`doctor` 只核对工具可发现性；真实检测能力由测试和示例验证。
-本机 Doxygen 安装在 `.tools/doxygen`，来源及实测证据见 [VALIDATION.md](VALIDATION.md)。
-新机器可以使用系统 Doxygen，不分发本机二进制。工具自身依赖与业务依赖分离；
-Python 隔离测试需要的业务包及 pytest 插件仍需在执行环境准备好。
+日常修改可以先用默认的 quick 模式；需要测试和构建时用 full；配置了变异测试等耗时检查时再用 deep。各模式只执行配置选定的检查。使用 `--run-commands` 前请读一遍项目配置：自定义命令可以在目标工程里执行，隔离构建目录不能代替安全沙箱。
 
-## 新工程接入
+请 AI 协助时，可以直接说：
 
-```bash
-.venv/bin/supervisor init /path/to/project
-```
+> 请先读 Code Supervisor 仓库里的 AI_REVIEW.md，再按目标工程的 supervisor.toml 运行检查。把已通过、发现问题和未执行的项目分开说明。结合源码判断哪些问题值得修，这次先不要改代码。
 
-修改生成的配置；测试/构建项目可参考两个 `examples/*/supervisor.toml`。
-每项检测必须知道测试入口、构建文件和范围，无法仅凭“检查所有代码”推断正确运行方式。
-`inputs` 是复制到本次隔离目录的文件/目录；不能包含输出目录。建议 `--output` 指向工程外。
-变异和 CMake 构建在副本执行；普通自定义 `[[commands]]` 则在原工程执行。
-`--run-commands` 表示允许可信配置执行项目代码/查询漏洞库，**不是安全沙箱**。
-配置可能访问设备、网络或外部路径，使用前须审查。
+## 参考了谁，项目自己做了什么
 
-## 车辆工程
+- **审查原则**参考 [unclebob/ub-mode](https://github.com/unclebob/ub-mode)，整理成[24 项中文审查清单](docs/review-checklist.md)；工程约定沿用车辆项目的[通用代码规范](docs/coding-standard.md)和[结构与拆分规则](docs/architecture.md)。这份清单既供人阅读，也供 AI 使用；其中需要工程判断的条目没有被算作自动检查通过。
+- **Python 质量检查**接入 unclebob 的三个项目：[crapper](https://github.com/unclebob/crapper) 结合复杂度与测试覆盖率识别风险函数，[dryer](https://github.com/unclebob/dryer) 寻找结构相似的代码，[mutator](https://github.com/unclebob/mutator) 提供变异算子，Supervisor 在副本中执行测试，观察测试能否发现改动。实际安装的上游提交见[固定版本清单](requirements-ub.txt)。
+- **C++ 使用单独的工具链**：例如用 Doxygen 检查文档、Lizard 计算复杂度、jscpd 寻找重复片段、CMake/CTest 构建并运行测试。具体工具、依赖和适用范围见[能力与限制](docs/capabilities.md)。
+- **Supervisor 自己负责**把规则和检测器接到同一个工程配置与命令行上，按项目指定的入口执行检查，记录检查范围、结果和日志。你可以换一个工程继续使用，也可以回头核对某个结论是怎么得出的。
 
-基础只读检查：
+## 按需阅读
 
-```bash
-.venv/bin/supervisor check /home/yh/Project/moving_carriage_sensors \
-  --config profiles/moving-carriage.toml --output .generated/carriage-readonly
-```
-
-创建新副本，再在副本执行构建或仿真：
-
-```bash
-.venv/bin/python scripts/prepare_carriage.py /home/yh/Project/moving_carriage_sensors /tmp/carriage-audit
-.venv/bin/supervisor check /tmp/carriage-audit/workspace --profile full --run-commands --output .generated/carriage-code
-.venv/bin/supervisor check /tmp/carriage-audit/workspace --config /tmp/carriage-audit/workspace/supervisor-brake.toml --profile deep --run-commands --output .generated/carriage-brake
-```
-
-创建脚本的 `--suite baseline` 或 `--suite experimental` 选择工程原有物理验收。
-其运行需要 ROS Jazzy/Gazebo、完整依赖及足够时间；不会把独立制动测试算作整车仿真通过。
-车辆接入脚本只对当前项目布局适用，其他工程直接配置通用适配器。
-
-## 报告与自动化
-
-每次生成唯一目录：`report.txt`、`report.json`、`report.sarif`、检查器证据和日志。
-JSON 保留范围、源码/规范/配置 SHA256、Git 状态及各项结果。
-退出0：本次选定检查通过；1：发现问题；2：执行错误或选定必需检查未完成。
-“不适用”和“不属于本模式”明确记录，不能等同于整项目通过。
-
-```bash
-.venv/bin/supervisor compare /path/old/report.json /path/new/report.json
-```
-
-比较不自动豁免历史问题；改了范围或配置会提示，删除诊断不等于修复。
-GitHub Actions 配置位于 `.github/workflows/quality.yml`，上传报告而非完整源码副本。
-本地钩子配置为 `.pre-commit-config.yaml`，安装 pre-commit 后运行 `pre-commit install` 才生效。
-工具不会自动提交、推送、发布或发送评论。漏洞查询会联网；凭据扫描不联网验证密钥。
-报告和日志可能包含业务数据，分享前需检查。
-
-## AI 与人分别做什么
-
-告诉 AI：“阅读 `/home/yh/Project/code-supervisor/AI_REVIEW.md`，按其中流程审查目标工程。”
-AI 阅读规范、运行同一 CLI、解释候选问题，并审查单位、物理假设、职责和契约真实性。
-CLI 单独运行也能完成已实现的机器检测；不需要 AI。
-两者都不能保证项目完美，覆盖率和变异检出率也不是代码正确率。
-
-## 参数注释检查
-
-新增`parameter-docs`：检查Python/C++函数参数与显式配置范围中的YAML键及有逐路径Markdown说明的JSON/XML参数是否有对应中文说明。车辆基础和副本配置已启用。规则与例外见AI_REVIEW.md，配置方式见docs/configuration.md。
+| 你想做什么 | 从哪里开始 |
+| --- | --- |
+| 配置检查范围、函数及配置参数注释、测试与构建 | [配置手册](docs/configuration.md) · [C++ 示例](examples/cpp-demo/supervisor.toml) |
+| 看一个 ROS/Gazebo 工程如何接入 | [车辆工程案例](docs/carriage-example.md) |
+| 核对实际验证过哪些能力 | [验证记录](VALIDATION.md) |
+| 在 GitHub 上自动检查并保存报告 | [CI 工作流](.github/workflows/quality.yml) |
