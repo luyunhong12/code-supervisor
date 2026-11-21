@@ -1,12 +1,12 @@
 version = 1
 name = "code-supervisor"
 source = ["src", "tests", "scripts"]
-checks = ["python-docs", "black", "ruff"]
+checks = ["python-docs", "black", "ruff", "parameter-docs", "mutator"]
 policy = ["docs/coding-standard.md", "docs/architecture.md"]
 
 [required]
 full = ["tests"]
-deep = ["tests", "mutation"]
+deep = ["tests", "mutator"]
 
 [[commands]]
 id = "tests"
@@ -14,3 +14,15 @@ argv = ["env", "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1", "{python}", "-m", "pytest", "
 profile = "full"
 timeout = 120
 finding_codes = [1]
+
+[settings.parameter-docs]
+paths = []
+
+# 全部核心 Python 模块及维护脚本；示例、测试和安装 shell 通过测试套件验证。
+[settings.mutator]
+files = ["scripts/carriage_suite.py", "scripts/prepare_carriage.py", "src/code_supervisor/__init__.py", "src/code_supervisor/acceptance.py", "src/code_supervisor/adapters.py", "src/code_supervisor/audit.py", "src/code_supervisor/checks.py", "src/code_supervisor/cli.py", "src/code_supervisor/config.py", "src/code_supervisor/configuration_docs.py", "src/code_supervisor/cpp.py", "src/code_supervisor/native.py", "src/code_supervisor/parameter_docs.py", "src/code_supervisor/process.py", "src/code_supervisor/quality.py", "src/code_supervisor/reporting.py", "src/code_supervisor/tasks.py"]
+inputs = ["src", "tests", "scripts", "examples", "pyproject.toml", "supervisor.toml"]
+pytest_args = ["tests", "-x"]
+max_mutants = 2000
+mutant_timeout = 30
+timeout = 240

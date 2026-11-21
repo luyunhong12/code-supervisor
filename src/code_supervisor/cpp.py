@@ -7,7 +7,11 @@ from .checks import CHINESE, finding
 
 
 def nodes(node):
-    """深度遍历语法树，返回全部节点。"""
+    """深度遍历语法树，返回全部节点。
+
+    Args:
+        node: 待遍历的 tree-sitter 语法节点。
+    """
     yield node
     for child in node.named_children:
         yield from nodes(child)
@@ -23,6 +27,7 @@ def preceding(node, source):
     Returns:
         紧邻的Doxygen文本；没有匹配说明时为空字符串。
     """
+    # 链接声明的直接函数/类型目标就是 body；链接块仍是文档关联边界。
     while node.parent:
         parent = node.parent
         transparent = (
@@ -34,7 +39,6 @@ def preceding(node, source):
             )
             or (
                 parent.type == "linkage_specification"
-                and parent.child_by_field_name("body") == node
                 and node.type != "declaration_list"
             )
         )
@@ -59,7 +63,11 @@ def preceding(node, source):
 
 
 def targets(tree):
-    """提取函数声明/定义及有主体的类型，排除函数局部变量声明。"""
+    """提取函数声明/定义及有主体的类型，排除函数局部变量声明。
+
+    Args:
+        tree: 待提取声明与定义的 tree-sitter 语法树。
+    """
     for node in nodes(tree.root_node):
         if node.type in {"class_specifier", "struct_specifier", "enum_specifier"}:
             if node.child_by_field_name("body"):
@@ -74,6 +82,33 @@ def targets(tree):
                     parent = parent.parent
                 if parent is None:
                     yield node
+
+
+def protected_regions(tree):
+    """收集不得被语法适配改写的注释和字符串字节区间。
+
+    Args:
+        tree: 原始或经过等长适配的 tree-sitter C++ 语法树。
+
+    Returns:
+        左闭右开的非空字节区间列表，包含普通及原始字符串。
+    """
+    return [
+        (node.start_byte, node.end_byte)
+        for node in nodes(tree.root_node)
+        if node.type in {"comment", "string_literal", "raw_string_literal"}
+    ]
+
+
+def overlaps_protected(start, end, regions):
+    """判断候选区间是否与保护区间重叠；仅边界相接不算重叠。
+
+    Args:
+        start: 非空候选区间的起始字节偏移，包含该位置。
+        end: 候选区间的结束字节偏移，不包含该位置且大于 start。
+        regions: 非空左闭右开保护区间组成的可迭代对象。
+    """
+    return any(left < end and right > start for left, right in regions)
 
 
 def qt_parameter_source(source):
@@ -92,20 +127,16 @@ def qt_parameter_source(source):
     import tree_sitter_cpp
 
     tree = Parser(Language(tree_sitter_cpp.language())).parse(source)
-    protected = [
-        (node.start_byte, node.end_byte)
-        for node in nodes(tree.root_node)
-        if node.type in {"comment", "string_literal", "raw_string_literal"}
-    ]
+    protected = protected_regions(tree)
     pattern = rb"(?m)^[ \t]*(?:Q_OBJECT|Q_PROPERTY\([ \t]*[A-Za-z_]\w*(?:::\w+)*[ \t]+[A-Za-z_]\w*[ \t]+READ[ \t]+[A-Za-z_]\w*[ \t]+NOTIFY[ \t]+[A-Za-z_]\w*[ \t]*\))[ \t]*$"
     result = bytearray(source)
     for match in re.finditer(pattern, source):
-        if any(start < match.end() and end > match.start() for start, end in protected):
+        if overlaps_protected(match.start(), match.end(), protected):
             continue
         result[match.start() : match.end()] = b" " * (match.end() - match.start())
     for match in re.finditer(rb"(?m)^[ \t]*(signals)[ \t]*:", source):
         start, end = match.span(1)
-        if not any(left < end and right > start for left, right in protected):
+        if not overlaps_protected(start, end, protected):
             result[start:end] = b"public "
     return bytes(result)
 
@@ -125,21 +156,17 @@ def cpp_parameter_source(source):
     source = qt_parameter_source(source)
     tree = Parser(Language(tree_sitter_cpp.language())).parse(source)
     edits = []
-    protected = [
-        (n.start_byte, n.end_byte)
-        for n in nodes(tree.root_node)
-        if n.type in {"comment", "string_literal", "raw_string_literal"}
-    ]
+    protected = protected_regions(tree)
     for match in re.finditer(rb"(?<=[A-Za-z_0-9)])->\*(?=[A-Za-z_])", source):
-        if not any(
-            left < match.end() and right > match.start() for left, right in protected
-        ):
+        if not overlaps_protected(match.start(), match.end(), protected):
             edits.append((match.start(), match.end(), b".  "))
     pending = [tree.root_node]
     while pending:
         node = pending.pop()
         pending.extend(node.children)
         parent = node.parent
+        if parent is None:
+            continue
         if (
             node.is_missing
             and node.type == ";"

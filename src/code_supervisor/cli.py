@@ -12,7 +12,7 @@ import uuid
 from . import __version__
 from .adapters import REGISTRY, advanced_checks
 from .checks import black_check, python_docs, ruff_check
-from .config import discover, load
+from .config import PROFILE_ORDER, discover, load
 from .cpp import cpp_docs
 from .process import execute
 from .reporting import compare_reports, doctor, sarif
@@ -21,12 +21,16 @@ TEMPLATE = """version = 1
 name = "my-project"
 source = ["."]
 exclude = []
-checks = ["python-docs", "black", "ruff", "cpp-docs"]
+checks = ["python-docs", "black", "ruff", "cpp-docs", "parameter-docs"]
 policy = []
+
+# 填入相关配置目录；空列表仅检查 Python/C++ 函数参数。
+[settings.parameter-docs]
+paths = []
 
 [required]
 full = ["tests"]
-deep = ["tests", "mutation"]
+deep = ["tests"]
 
 # 配置好实际命令后取消注释。只执行可信配置。
 # [[commands]]
@@ -46,14 +50,23 @@ LABELS = {
 
 
 def fingerprints(root, files):
-    """返回源码 SHA256；读取失败传播给调用方。"""
+    """返回源码 SHA256；读取失败传播给调用方。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+    """
     return {
         name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in files
     }
 
 
 def git_metadata(root):
-    """读取 Git 提交和工作区状态；非 Git 工程也可正常检查。"""
+    """读取 Git 提交和工作区状态；非 Git 工程也可正常检查。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+    """
     result = {}
     for key, args in (
         ("head", ["rev-parse", "HEAD"]),
@@ -73,7 +86,14 @@ def git_metadata(root):
 
 
 def builtin_checks(root, cfg, files, output):
-    """逐项执行内置检查；不适用或依赖缺失均显式记录。"""
+    """逐项执行内置检查；不适用或依赖缺失均显式记录。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        cfg: 已完成边界校验的工程配置映射。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        output: 本次检查的独立输出目录，调用前应已创建。
+    """
     results = []
     for name in cfg["checks"]:
         if name in REGISTRY:
@@ -103,8 +123,16 @@ def builtin_checks(root, cfg, files, output):
 
 
 def command_checks(root, cfg, profile, enabled, output):
-    """按模式运行显式配置命令，未授权执行时仅记录未执行。"""
-    order = {"quick": 0, "full": 1, "deep": 2}
+    """按模式运行显式配置命令，未授权执行时仅记录未执行。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        cfg: 已完成边界校验的工程配置映射。
+        profile: 本次检查模式：quick、full 或 deep。
+        enabled: 是否允许执行项目命令或需要授权的高级检查。
+        output: 本次检查的独立输出目录，调用前应已创建。
+    """
+    order = PROFILE_ORDER
     results = []
     for item in cfg["commands"]:
         selected = order[item.get("profile", "full")] <= order[profile]
@@ -130,7 +158,11 @@ def command_checks(root, cfg, profile, enabled, output):
 
 
 def outcome(results):
-    """计算本次门禁退出码：0 已执行范围通过、1 问题、2 错误/不完整。"""
+    """计算本次门禁退出码：0 已执行范围通过、1 问题、2 错误/不完整。
+
+    Args:
+        results: 已执行和未执行检查的结果记录列表。
+    """
     selected = [r for r in results if r.get("selected", True)]
     if any(r["status"] in {"error", "not-run"} for r in selected):
         return 2
@@ -138,7 +170,12 @@ def outcome(results):
 
 
 def write_report(output, report):
-    """保存 JSON 与中文文本报告，不向终端输出配置命令的原始日志。"""
+    """保存 JSON 与中文文本报告，不向终端输出配置命令的原始日志。
+
+    Args:
+        output: 本次检查的独立输出目录，调用前应已创建。
+        report: 包含检查结果、范围和运行元信息的报告映射。
+    """
     (output / "report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -172,7 +209,11 @@ def write_report(output, report):
 
 
 def check(args):
-    """执行一次检查并保存唯一报告；源码中途变化使本次证据失效。"""
+    """执行一次检查并保存唯一报告；源码中途变化使本次证据失效。
+
+    Args:
+        args: 命令行解析结果，包含工程、配置、输出目录与执行模式。
+    """
     root = args.project.resolve()
     if not root.is_dir():
         raise ValueError("项目目录不存在")
@@ -180,7 +221,15 @@ def check(args):
     cfg = load(root, config)
     files = discover(root, cfg)
     if not files:
-        raise ValueError("扫描范围内没有 Python/C++ 文件，拒绝空扫描通过")
+        from .parameter_docs import config_files
+
+        options = cfg.get("settings", {}).get("parameter-docs", {})
+        if "parameter-docs" not in cfg["checks"] or not config_files(
+            root, options.get("paths", [])
+        ):
+            raise ValueError(
+                "扫描范围内没有 Python/C++ 或已配置的参数文件，拒绝空扫描通过"
+            )
     output_base = (
         args.output.resolve() if args.output else root / ".generated" / "supervisor"
     )
@@ -217,8 +266,13 @@ def check(args):
                     reason="本模式要求该检查，但尚未配置适配命令",
                 )
             )
-        elif match["status"] == "not-run":
+        elif match["status"] in {"not-run", "not-applicable"}:
             match["selected"] = True
+            if match["status"] == "not-applicable":
+                match.update(
+                    status="error",
+                    reason="本模式要求该检查完成，但当前扫描范围不适用",
+                )
     try:
         changed = discover(root, cfg) != files or fingerprints(root, files) != before
         changed |= (
@@ -254,7 +308,10 @@ def main():
     )
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="action", required=True)
-    sub.add_parser("doctor", help="检查工具安装情况")
+    environment = sub.add_parser("doctor", help="检查工具安装情况")
+    environment.add_argument(
+        "--language", choices=("python", "cpp", "all"), default="all"
+    )
     diff = sub.add_parser("compare", help="比较两份历史报告，不隐藏已有问题")
     diff.add_argument("before", type=Path)
     diff.add_argument("after", type=Path)
@@ -273,7 +330,7 @@ def main():
     args = parser.parse_args()
     try:
         if args.action == "doctor":
-            return doctor()
+            return doctor(args.language)
         if args.action == "compare":
             print(
                 json.dumps(

@@ -9,7 +9,7 @@ description = "跨项目中文代码督导：Python Google 文档、C++ Doxygen 
 license = "MIT"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md", "licenses/*.txt"]
 requires-python = ">=3.11"
-dependencies = ["black==24.10.0", "ruff==0.14.3", "tree-sitter==0.25.2", "tree-sitter-cpp==0.23.4"]
+dependencies = ["black==24.10.0", "ruff==0.14.3", "PyYAML==6.0.3", "packaging==26.3"]
 
 [project.scripts]
 supervisor = "code_supervisor.cli:main"
@@ -26,4 +26,7 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 
 [project.optional-dependencies]
-quality = ["pytest==8.3.5", "coverage==7.10.7", "hypothesis==6.142.4", "pyright==1.1.407", "bandit==1.8.6", "detect-secrets==1.5.0", "pip-audit==2.9.0", "lizard==1.17.31", "gcovr==8.4", "clang-tidy==18.1.8", "tree-sitter-language-pack==1.23.1", "edn-format==0.7.5"]
+quality = ["tree-sitter==0.25.2", "tree-sitter-cpp==0.23.4", "pytest==8.3.5", "coverage==7.10.7", "hypothesis==6.142.4", "pyright==1.1.407", "bandit==1.8.6", "detect-secrets==1.5.0", "pip-audit==2.9.0", "lizard==1.17.31", "gcovr==8.4", "clang-tidy==18.1.8", "tree-sitter-language-pack==1.23.1", "edn-format==0.7.5"]
+
+python = ["pytest==8.3.5", "coverage==7.10.7", "hypothesis==6.142.4", "pyright==1.1.407", "bandit==1.8.6", "detect-secrets==1.5.0", "pip-audit==2.9.0", "tree-sitter-language-pack==1.23.1", "edn-format==0.7.5"]
+cpp = ["tree-sitter==0.25.2", "tree-sitter-cpp==0.23.4", "lizard==1.17.31", "gcovr==8.4", "clang-tidy==18.1.8"]

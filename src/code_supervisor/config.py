@@ -7,7 +7,7 @@ import tomllib
 
 from .adapters import REGISTRY, validate_settings
 
-EXCLUDED = {
+GENERATED_DIRS = {
     ".git",
     ".venv",
     "venv",
@@ -16,19 +16,27 @@ EXCLUDED = {
     "log",
     ".generated",
     "__pycache__",
+    ".pytest_cache",
     "node_modules",
     ".tools",
     ".build",
     "target",
-    "vendor",
 }
+# vendor 不参与自有源码扫描，但可作为隔离构建的输入。
+EXCLUDED = GENERATED_DIRS | {"vendor"}
 CPP_SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"}
 CHECKS = {"python-docs", "black", "ruff", "cpp-docs"}
-PROFILES = {"quick", "full", "deep"}
+PROFILE_ORDER = {"quick": 0, "full": 1, "deep": 2}
+PROFILES = set(PROFILE_ORDER)
 
 
 def inside(root, name):
-    """解析工程内路径；越界路径抛出 ValueError，不要求目标已存在。"""
+    """解析工程内路径；越界路径抛出 ValueError，不要求目标已存在。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        name: 相对于工程根目录的路径，解析后不得越出工程。
+    """
     path = (root / name).resolve()
     if not path.is_relative_to(root):
         raise ValueError(f"路径不在工程内：{name}")
@@ -50,7 +58,7 @@ def load(root, config_path):
         OSError: 配置文件无法读取。
     """
     cfg = tomllib.loads(config_path.read_text(encoding="utf-8"))
-    if cfg.get("version") != 1:
+    if type(cfg.get("version")) is not int or cfg["version"] != 1:
         raise ValueError("配置 version 必须为 1")
     unknown = set(cfg) - {
         "version",
@@ -106,7 +114,12 @@ def load(root, config_path):
 
 
 def validate_command(item, ids):
-    """校验一个显式外部检查命令；非法配置抛出 ValueError。"""
+    """校验一个显式外部检查命令；非法配置抛出 ValueError。
+
+    Args:
+        item: 待校验的单条命令配置映射。
+        ids: 已登记的命令标识集合，校验成功时加入当前标识。
+    """
     if not isinstance(item, dict) or set(item) - {
         "id",
         "argv",
@@ -153,9 +166,15 @@ def discover(root, cfg):
 
     不遍历符号链接与默认生成目录；返回相对路径到语言的映射。
     路径不可读时传播 OSError，避免把扫描失败当作无问题。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        cfg: 已完成边界校验的工程配置映射。
     """
     found = {}
     for name in cfg["source"]:
+        if (root / name).is_symlink():
+            continue
         source = inside(root, name)
         candidates = [source] if source.is_file() else walk(source)
         for path in candidates:
@@ -177,7 +196,11 @@ def discover(root, cfg):
 
 
 def walk(folder):
-    """递归返回普通文件，提前剪去生成目录和符号链接。"""
+    """递归返回普通文件，提前剪去生成目录和符号链接。
+
+    Args:
+        folder: 要递归扫描的目录。
+    """
     for path in sorted(folder.iterdir()):
         if path.is_symlink() or path.name in EXCLUDED:
             continue

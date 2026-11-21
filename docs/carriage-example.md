@@ -2,12 +2,14 @@
 
 这是 [moving_carriage_sensors](https://github.com/luyunhong12/moving_carriage_sensors) 的专用接入示例。只有运行车辆构建和仿真才需要相应的 ROS Jazzy、Gazebo 和业务依赖；其他项目可以从[配置手册](configuration.md)开始。
 
-以下命令均在 Supervisor 仓库根目录运行。将车辆工程路径替换为实际位置：
+以下命令均在 Supervisor 仓库根目录运行。只读参数检查直接使用车辆工程自己维护的
+`supervisor/parameters.toml`，避免在工具仓库重复保存会过期的路径清单。将车辆工程路径
+替换为实际位置：
 
 ```bash
 vehicle_root=/absolute/path/to/moving_carriage_sensors
 .venv/bin/supervisor check "$vehicle_root" \
-  --config profiles/moving-carriage.toml --output .generated/carriage-readonly
+  --config "$vehicle_root/supervisor/parameters.toml" --output .generated/carriage-readonly
 ```
 
 要运行构建或制动检查，先准备新副本，再在副本中运行。下面两次检查共用这个副本，依次执行：

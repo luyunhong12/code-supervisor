@@ -16,6 +16,9 @@ from .cpp import nodes, preceding, targets, cpp_parameter_source
 from .cpp import qt_parameter_source as qt_parameter_source
 from .tasks import CheckError, save
 
+XML_SUFFIXES = {".xml", ".sdf", ".urdf", ".xacro", ".world", ".launch"}
+CONFIG_SUFFIXES = XML_SUFFIXES | {".yaml", ".yml", ".json", ".toml", ".ini"}
+
 
 def google_arguments(doc):
     """解析Google参数分区，返回参数到含续行说明的映射。
@@ -29,7 +32,6 @@ def google_arguments(doc):
     entries = {}
     active = False
     current = None
-    indent = 0
     for line in doc.splitlines():
         if re.fullmatch(r"(Args|Arguments|Keyword Args):", line):
             active, current = True, None
@@ -39,12 +41,12 @@ def google_arguments(doc):
         if not active:
             continue
         match = re.match(r"^(\s+)(\*{0,2}\w+)(?:\s*\([^)]*\))?:\s*(.*)$", line)
-        if match and (current is None or len(match[1]) <= indent):
-            indent = len(match[1])
-            current = match[2].lstrip("*")
-            entries[current] = match[3]
-        elif current and len(line) - len(line.lstrip()) > indent:
-            entries[current] += "\n" + line.strip()
+        if match and (current is None or len(match[1]) <= len(current[1])):
+            current = match
+            entries[match[2].lstrip("*")] = match[3]
+        elif current and len(line) - len(line.lstrip()) > len(current[1]):
+            name = current[2].lstrip("*")
+            entries[name] += "\n" + line.strip()
     return entries
 
 
@@ -72,7 +74,7 @@ def python_parameters(source):
         owner = parents.get(node)
         method = isinstance(owner, ast.ClassDef)
         doc = "" if isinstance(node, ast.Lambda) else ast.get_docstring(node) or ""
-        if method and node.name == "__init__" and not doc:
+        if method and getattr(node, "name", None) == "__init__" and not doc:
             doc = ast.get_docstring(owner) or ""
         entries = google_arguments(doc)
         for index, arg in enumerate(args):
@@ -287,7 +289,7 @@ def config_files(root, paths):
         paths: 文件或目录的相对路径列表。
 
     Returns:
-        去重排序后的配置路径；目录扫描识别YAML/JSON/TOML/INI/XML/SDF。
+        去重排序后的配置路径；识别 YAML/JSON/TOML/INI 及 XML 系列后缀。
     """
     found = set()
     for name in paths:
@@ -295,15 +297,7 @@ def config_files(root, paths):
         if not path.exists() or (root / name).is_symlink():
             raise CheckError(f"配置参数路径不存在或为链接：{name}")
         for item in [path] if path.is_file() else walk(path):
-            if item.suffix.lower() in {
-                ".yaml",
-                ".yml",
-                ".toml",
-                ".json",
-                ".ini",
-                ".xml",
-                ".sdf",
-            }:
+            if item.suffix.lower() in CONFIG_SUFFIXES:
                 found.add(item.relative_to(root).as_posix())
     return sorted(found)
 
@@ -323,7 +317,11 @@ def parameter_docs(root, files, options, output):
     if "paths" not in options:
         raise CheckError("parameter-docs必须显式配置paths；仅查函数时填写空列表")
     configs = config_files(root, options["paths"])
+    if options["paths"] and not configs:
+        raise CheckError("显式配置范围内没有可检查的配置文件")
     all_files = {**files, **{name: "config" for name in configs}}
+    if not all_files:
+        raise CheckError("参数检查范围为空")
     issues, exceptions, errors, counts, hashes = [], [], [], {}, {}
     for name, language in all_files.items():
         data = (root / name).read_bytes()
@@ -341,26 +339,24 @@ def parameter_docs(root, files, options, output):
                     )
             elif (root / name).suffix.lower() in {".yaml", ".yml"}:
                 rows, skipped = yaml_parameters(data.decode("utf-8-sig")), []
-            elif (root / name).suffix.lower() in {".json", ".xml", ".sdf"}:
+            elif (root / name).suffix.lower() in XML_SUFFIXES | {".json"}:
+                is_json = (root / name).suffix.lower() == ".json"
+                parse = json_parameters if is_json else xml_parameters
+                rows = parse(data.decode("utf-8-sig"))
                 document = options.get("documentation", {}).get(name)
-                if not document:
+                if is_json and not document:
                     raise CheckError(
-                        "JSON/XML配置必须显式提供documentation逐参数Markdown说明"
+                        "JSON配置必须显式提供documentation逐参数Markdown说明"
                     )
-                doc_path = inside(root, document)
-                if (root / document).is_symlink():
-                    raise CheckError("参数说明文档不能为符号链接")
-                doc_data = doc_path.read_bytes()
-                hashes[document] = hashlib.sha256(doc_data).hexdigest()
-                parse = (
-                    json_parameters
-                    if (root / name).suffix.lower() == ".json"
-                    else xml_parameters
-                )
-                rows = attach_descriptions(
-                    parse(data.decode("utf-8-sig")),
-                    markdown_descriptions(doc_data.decode("utf-8-sig")),
-                )
+                if document:
+                    doc_path = inside(root, document)
+                    if (root / document).is_symlink():
+                        raise CheckError("参数说明文档不能为符号链接")
+                    doc_data = doc_path.read_bytes()
+                    hashes[document] = hashlib.sha256(doc_data).hexdigest()
+                    rows = attach_descriptions(
+                        rows, markdown_descriptions(doc_data.decode("utf-8-sig"))
+                    )
                 skipped = []
             else:
                 errors.append(
@@ -404,5 +400,5 @@ def parameter_docs(root, files, options, output):
         exceptions=exceptions,
         unparsed=errors,
         evidence=evidence,
-        scope="显式Python/C++函数形参、YAML映射键及有逐路径Markdown说明的JSON/XML参数；self/cls接收者、C++未命名形参单列；其他配置格式未实现时报告错误。注释单位、范围与真实性仍须语义审查。",
+        scope="显式Python/C++函数形参、YAML映射键及XML内联注释及有逐路径Markdown说明的JSON参数；self/cls接收者、C++未命名形参单列；其他配置格式未实现时报告错误。注释单位、范围与真实性仍须语义审查。",
     )

@@ -5,7 +5,7 @@
 | 检查 ID | 使用实现 | 检测内容与边界 |
 |---|---|---|
 | python-docs / black / ruff | AST、Black、Ruff | 中文 Google 文档基础规则、格式、语法及静态错误；不是 Google 全文认证 |
-| parameter-docs | AST、tree-sitter、YAML语法节点 | 逐名检查函数参数与YAML配置键中文说明；解析失败/其他配置格式明确报告，不能证明语义真实 |
+| parameter-docs | AST、tree-sitter、YAML节点、Expat | Python/C++参数、YAML键、XML元素及属性内联注释、JSON参数表；兼容XML旧参数表，支持纯配置工程；不证明语义真实 |
 | pyright | Pyright | 静态类型；缺存根保留诊断，动态行为仍需测试 |
 | dependencies | 本项目 AST/import/include 规则 | 明确禁止的模块依赖，支持相对导入；不推断架构合理性，不检查动态加载 |
 | security | Bandit | Python 安全模式；候选有误报，不覆盖完整攻击面 |
@@ -26,13 +26,7 @@
 | acceptance | 结构化验收协议 | 业务布尔判据、数值性能上限；需项目自己提供真实判据与测量 |
 | doctor / compare / SARIF | 本项目 | 环境可用性、历史差异、可消费机器报告；不掩盖执行失败 |
 
-## 采用和未采用的项目
-
-本版实际采用 Pyright、Bandit、detect-secrets、pip-audit、Lizard、jscpd、clang-tidy、
-coverage/gcovr、Hypothesis 示例性质测试、官方 Doxygen，以及原版 ub 三工具。
-原先讨论的 Tach、Gitleaks、OSV-Scanner、CodeChecker、Mull、MegaLinter、reviewdog
-**没有全部安装和叠加**。本版用明确边界规则、上述安全工具及有限 C++ 变异覆盖相应部分需求，
-不能宣传成这些候选工具的完整功能集合。GitHub 工作流负责执行和保留报告，不自动贴审查评论。
+GitHub 工作流负责执行检查和保留报告，不自动发布审查评论。
 
 ## 重要限制
 
@@ -68,3 +62,7 @@ C++ 参数检查识别独立行 `Q_OBJECT`、简单的
 这只是参数文档解析支持，不代表执行 Qt 元对象编译器或验证信号槽行为。
 
 参数检查另支持GZ_ADD_PLUGIN、GZ_ADD_PLUGIN_ALIAS、GZ_PHYSICS_ADD_PLUGIN独立注册调用，以及函数体中的成员指针调用和GNU声明尾部asm符号别名。只用于参数提取，不代表展开宏或验证编译器语义；未知错误继续报告。
+
+Python 变异位置使用 coverage 的语句首行映射，避免多行表达式被误报未覆盖。
+副本进程继承检测工具搜索路径，Python 源码导入路径仍仅包含副本及其 src。
+副本隔离不是安全沙箱；工具路径继承不改变执行可信项目代码的授权边界。

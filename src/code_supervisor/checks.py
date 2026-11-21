@@ -12,12 +12,24 @@ CHINESE = re.compile(r"[\u4e00-\u9fff]")
 
 
 def finding(file, line, rule, message):
-    """构造包含定位信息的统一诊断记录。"""
+    """构造包含定位信息的统一诊断记录。
+
+    Args:
+        file: 诊断对应的文件路径；无文件位置时可为空。
+        line: 诊断对应的一基源码行号。
+        rule: 稳定的机器规则标识。
+        message: 解释问题的中文诊断文本。
+    """
     return dict(file=file, line=line, rule=rule, message=message)
 
 
 def python_docs(root, files):
-    """检查全部语法定义的中文说明与三双引号，不推断契约是否真实。"""
+    """检查全部语法定义的中文说明与三双引号，不推断契约是否真实。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 已选定的 Python 源码相对路径列表。
+    """
     issues = []
     for file in files:
         source = (root / file).read_text(encoding="utf-8-sig")
@@ -60,7 +72,12 @@ def python_docs(root, files):
 
 
 def black_check(root, files):
-    """在内存比较 Black 格式，读取工程 pyproject.toml，不写回源码。"""
+    """在内存比较 Black 格式，读取工程 pyproject.toml，不写回源码。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 已选定的 Python 源码相对路径列表。
+    """
     import black
 
     options = {}
@@ -113,16 +130,24 @@ def black_check(root, files):
 
 
 def ruff_check(root, files, output):
-    """逐文件检查选定静态规则和 Google 文档分区，包含无后缀入口。"""
+    """逐文件检查选定静态规则和 Google 文档分区，包含无后缀入口。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 已选定的 Python 源码相对路径列表。
+        output: 本次检查的独立输出目录，调用前应已创建。
+    """
     import json
 
     version = importlib.metadata.version("ruff")
     issues = []
     logs = []
     for index, file in enumerate(files):
-        # 强制显式固定规则，不继承外部 fix 或 preview 配置。
+        # 隔离解释器的当前目录和 PYTHONPATH，避免加载目标工程的同名模块。
+        # 固定规则，不继承外部 fix 或 preview 配置。
         argv = [
             sys.executable,
+            "-I",
             "-m",
             "ruff",
             "check",

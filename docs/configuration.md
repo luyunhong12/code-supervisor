@@ -40,7 +40,8 @@ min_nodes = 20
 `source/exclude` 控制发现范围；默认剪去 .git/.venv/build/install/log/.generated/.tools/vendor。
 未跟踪文件也会检查。`policy` 记录规范哈希，不会自动把任意自然语言规范转换成静态规则。
 每项 `settings` 可指定 `profile = "quick"|"full"|"deep"` 和 `timeout`（秒）。
-`required` 为每种模式分别指定，不隐式继承；缺失项让本次退出2。
+`required` 为每种模式分别指定，不隐式继承；缺失、未执行或不适用的必需项让本次退出2。
+未列为必需项的检查仍可按源码语言正常报告不适用。
 
 ## 类型、安全和边界
 
@@ -68,6 +69,11 @@ timeout = 120
 把需要的 ID 加入 `checks` 后才执行。依赖清单要求纯 `name==version` 行，包含全部传递依赖；
 不执行 pip 安装/解析脚本。超大凭据扫描文件被记录为未完成，不默默省略。
 安全检测通常应选生产源码；测试中的断言可能被 Bandit 报告。
+`settings.security.timeout` 控制 Bandit 运行时限，默认 120 秒。
+漏洞报告须与清单中的规范化包名、版本及数量一致，并包含完整漏洞结果；
+合法包名别名、等价版本及报告顺序不影响匹配。缺项、跳过或退出码与报告矛盾时
+判为执行错误，不能当作无漏洞。
+
 
 ## C++
 
@@ -103,12 +109,25 @@ min_lines = 5
 min_tokens = 50
 
 [settings.doxygen]
-# 可选：executable = "/absolute/path/to/doxygen"
+# 可选：自定义 executable 必须通过 --run-commands 授权。
+# executable = "/absolute/path/to/doxygen"
 ```
+
+`clang-tidy` 遵守扫描范围与 `settings.clang-tidy.files`，诊断使用项目相对路径。
+只选源文件时仅分析对应编译单元；选中头文件时分析副本内的编译单元，
+并用 Clang 包含记录确认所选头文件实际被包含，未包含时报执行错误。
+构建依赖可以保留在 `inputs` 中，但范围外诊断不会作为自有代码问题输出；
+构建或解析失败仍会报错。编译数据库逐条执行；同一文件的多套编译命令分别保留证据，
+相对目录以副本为基准，相对诊断和包含路径以该条编译命令的工作目录为基准。
+头文件诊断先采集再按精确路径过滤。日志保留原始副本路径供复核。
 
 `cpp-sanitizers` 默认 address,undefined；`cpp-thread` 独立使用 thread。
 变异预算限制的是有效编译并执行的数量；剩余候选会报告预算未完成。
 不能通过降低预算宣称变异检查全部通过。
+
+CTest 的 JUnit 失败/错误节点必须与退出码一致；退出 0 却含失败节点，或退出 8
+却没有失败/错误节点，均判为执行错误。正常用例失败在允许失败结果的检查器中
+保留为 fail；空测试与跳过项仍不能通过。
 
 ## 业务、性质和性能验收
 
@@ -165,7 +184,7 @@ Python按Args逐名核对，C++按@param逐名核对；YAML按映射键核对同
 
 ## JSON/XML参数说明
 
-JSON、XML、SDF必须通过`settings.parameter-docs.documentation`显式关联逐参数Markdown表格；YAML继续读取紧邻注释。
+JSON必须通过`settings.parameter-docs.documentation`显式关联逐参数Markdown表格；XML/SDF/URDF/Xacro/world/launch默认读取文件内标准注释，旧参数表可补充缺失说明；YAML继续读取紧邻注释。
 
 ```toml
 [settings.parameter-docs]
@@ -179,3 +198,58 @@ XML枚举元素与每个属性，例如`/gui[0]/plugin[0]/@filename`；方括号
 `*`只匹配一个非空路径段。容器说明不能代替子字段，未使用、重复或重叠路径规则会报错。
 JSON记录定位到文件首行，XML保存实际元素行号。重复JSON键、XML DTD和外部实体拒绝解析。
 文档内容也计入报告SHA256并检查扫描期间是否变化。机器只验证逐参数存在中文说明，单位、范围和真实性仍需结合业务审查。
+
+
+### XML 内联注释与纯配置工程
+
+注释排版及属性关联规则见 [代码规范第9节](coding-standard.md#9-参数说明统一规则)。
+以下配置可以单独检查仿真文件，不要求同时存在 Python/C++ 源码：
+
+```toml
+version = 1
+source = ["models"]
+checks = ["parameter-docs"]
+
+[settings.parameter-docs]
+paths = ["models"]
+```
+
+目录识别 `.xml/.sdf/.urdf/.xacro/.world/.launch`；只按 XML 文本解析，
+不会执行 Xacro 宏、ROS launch 或外部实体。`.launch.py` 按 Python 检查。
+空扫描与无法解析的配置不能通过。TOML/INI 仍会明确报告未实现。
+
+### 历史对比
+
+`compare` 同时核对参数检查实际扫描的配置文件清单；删除、移动或新增配置文件
+均视为范围变化，旧报告缺少清单时也不能确认问题已解决。清单顺序变化不影响比较。
+
+`compare` 的 `resolved` 只包含同项目根目录、同范围、同配置且对应检查完成后
+消失的诊断。双方还必须明确具有有效快照；缺少身份/快照元信息的旧报告、不同
+工作树或迁移后的根目录，以及检查移除、未完成或范围变化，均保守归入 `unverified`。
+重复诊断保留出现次数，优先匹配原行号，再配对移动的行号；缺少定义级标识的
+同类诊断只能确认数量变化，具体哪个对象被修复仍需人工核对。
+`statuses` 继续记录被移除的检查（after 为 null）。
+
+本仓库自身的 deep 配置使用真实的 `mutator` 检查器，明确列出全部 15 个
+`src/code_supervisor` 模块和 2 个 Python 维护脚本。测试会核对该清单，新增模块
+未加入时会失败。示例、测试代码和 shell 安装器通过测试套件验证，不属于 Python
+变异目标；`__init__.py` 当前没有可变异算子。full 模式不会自动执行这一耗时检查。
+init 模板只要求已提示配置的 tests；启用变异检查时须同时配置检查器、输入副本和
+required.deep。
+
+当前自身变异预算为 2000；`pytest_args` 的 `-x` 仅在单个变异已触发失败后停止
+该次测试，正常基线仍运行完整套件。测试排序优先执行规则用例，再运行真实工具链
+集成用例；没有过滤用例，也不把预算不足计为通过。
+
+覆盖判定使用 coverage 的语句行号映射，兼容多行表达式，但不借用外层 try/if 的
+执行记录代替分支语句。每个变异完成后写入 `mutator/mutator.json`，包含稳定的
+`mutation_id`、位置、改动和执行结果，可在长任务中读取进度；中途文件不是完整
+检查报告。存活、未覆盖、预算不足和基础设施错误仍保留原始分类；等价变异通过
+人工审查说明，不从统计中删除，也不自动改成通过。
+
+
+隔离副本与源码扫描共享缓存/生成目录排除规则，复制前剪枝，避免读取旧构建和
+虚拟环境链接。vendor 不参与自有源码扫描，但作为可能的构建依赖保留在显式输入
+副本中。使用 `inputs = ["."]` 时，仍应将 `--output` 设在工程之外；输出目录不能
+包含在待复制输入内。普通源码链接仍然拒绝。Ruff 使用隔离解释器加载已安装工具，
+目标工程和 PYTHONPATH 中的同名模块不会被当成检查器执行。

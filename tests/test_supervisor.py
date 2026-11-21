@@ -15,7 +15,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def run_cli(*args):
-    """通过子进程运行真实入口，避免仅测试内部实现。"""
+    """通过子进程运行真实入口，避免仅测试内部实现。
+
+    Args:
+        args: 传给 supervisor 命令行的参数，逐项转换为字符串。
+    """
     env = dict(os.environ, PYTHONPATH=str(ROOT / "src"))
     return subprocess.run(
         [sys.executable, "-m", "code_supervisor.cli", *map(str, args)],
@@ -26,7 +30,13 @@ def run_cli(*args):
 
 
 def project(tmp_path, text='"""中文示例。"""\n', extra=""):
-    """创建独立被测工程，返回根目录。"""
+    """创建独立被测工程，返回根目录。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+        text: 写入 sample.py 的 Python 源码文本。
+        extra: 追加到示例 supervisor.toml 的配置文本。
+    """
     (tmp_path / "sample.py").write_text(text)
     (tmp_path / "supervisor.toml").write_text(
         'version = 1\nsource = ["."]\nchecks = ["python-docs", "black", "ruff", "cpp-docs"]\n'
@@ -36,14 +46,22 @@ def project(tmp_path, text='"""中文示例。"""\n', extra=""):
 
 
 def report(root):
-    """读取一次测试运行生成的唯一 JSON 报告。"""
+    """读取一次测试运行生成的唯一 JSON 报告。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+    """
     return json.loads(
         next((root / ".generated/supervisor").glob("*/report.json")).read_text()
     )
 
 
 def test_good_project_and_no_source_changes(tmp_path):
-    """有效工程通过，源码字节不变，C++ 明确不适用。"""
+    """有效工程通过，源码字节不变，C++ 明确不适用。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     root = project(tmp_path)
     before = (root / "sample.py").read_bytes()
     done = run_cli("check", root)
@@ -58,7 +76,11 @@ def test_good_project_and_no_source_changes(tmp_path):
 
 
 def test_missing_docs_and_undefined_variable(tmp_path):
-    """缺失说明及未定义变量均报告真实文件行号。"""
+    """缺失说明及未定义变量均报告真实文件行号。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     root = project(tmp_path, "def value():\n    return missing_name\n")
     assert run_cli("check", root).returncode == 1
     issues = [f for r in report(root)["results"] for f in r.get("findings", [])]
@@ -67,7 +89,11 @@ def test_missing_docs_and_undefined_variable(tmp_path):
 
 
 def test_extensionless_untracked_entrypoint(tmp_path):
-    """没有 Git 和后缀的 Python 入口也进入静态检查。"""
+    """没有 Git 和后缀的 Python 入口也进入静态检查。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     root = project(tmp_path)
     (root / "entry").write_text(
         '#!/usr/bin/env python3\n"""中文入口。"""\nprint(unknown)\n'
@@ -82,7 +108,12 @@ def test_extensionless_untracked_entrypoint(tmp_path):
 
 @pytest.mark.parametrize("kind", ["empty", "escape", "unknown", "missing"])
 def test_invalid_scope_never_passes(tmp_path, kind):
-    """空扫描、越界和错误配置不能返回通过。"""
+    """空扫描、越界和错误配置不能返回通过。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+        kind: 本用例构造的无效配置类别。
+    """
     root = project(tmp_path)
     if kind == "empty":
         (root / "sample.py").unlink()
@@ -96,7 +127,11 @@ def test_invalid_scope_never_passes(tmp_path, kind):
 
 
 def test_init_does_not_overwrite(tmp_path):
-    """初始化拒绝覆盖项目已有配置。"""
+    """初始化拒绝覆盖项目已有配置。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     assert run_cli("init", tmp_path).returncode == 0
     original = (tmp_path / "supervisor.toml").read_bytes()
     assert run_cli("init", tmp_path).returncode == 2
@@ -104,7 +139,11 @@ def test_init_does_not_overwrite(tmp_path):
 
 
 def test_command_requires_explicit_execution(tmp_path):
-    """默认不执行项目自定义命令，也不将其记作通过。"""
+    """默认不执行项目自定义命令，也不将其记作通过。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     extra = """[[commands]]
 id = "tests"
 argv = ["{python}", "-c", "open('executed', 'w').write('yes')"]
@@ -116,7 +155,11 @@ profile = "full"
 
 
 def test_missing_tool_is_error(tmp_path):
-    """命令不存在时报告错误，不把失败当作干净结果。"""
+    """命令不存在时报告错误，不把失败当作干净结果。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     result = execute(
         ["/definitely/nonexistent/supervisor-tool"], tmp_path, tmp_path / "log"
     )
@@ -125,7 +168,13 @@ def test_missing_tool_is_error(tmp_path):
 
 @pytest.mark.parametrize("code,status", [(0, "pass"), (1, "fail"), (2, "error")])
 def test_exit_status_mapping(tmp_path, code, status):
-    """区分检查通过、发现问题和执行错误。"""
+    """区分检查通过、发现问题和执行错误。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+        code: 模拟子进程的退出码。
+        status: 预期转换得到的检查状态。
+    """
     result = execute(
         [sys.executable, "-c", f"raise SystemExit({code})"], tmp_path, tmp_path / "log"
     )
@@ -133,7 +182,11 @@ def test_exit_status_mapping(tmp_path, code, status):
 
 
 def test_timeout_terminates_child_group(tmp_path):
-    """超时回收子进程，延迟写入不能发生。"""
+    """超时回收子进程，延迟写入不能发生。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     marker = tmp_path / "late"
     child = "import time,pathlib; time.sleep(1); pathlib.Path('late').write_text('bad')"
     parent = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{child!r}]); time.sleep(10)"
@@ -148,7 +201,11 @@ def test_timeout_terminates_child_group(tmp_path):
 
 
 def test_source_changed_invalidates_evidence(tmp_path):
-    """配置命令修改源码时，报告不宣称一致快照。"""
+    """配置命令修改源码时，报告不宣称一致快照。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     extra = """[[commands]]
 id = "tests"
 argv = ["{python}", "-c", "open('sample.py', 'a').write('x = 1')"]
@@ -160,7 +217,11 @@ profile = "full"
 
 
 def test_unconfigured_required_gate_is_incomplete(tmp_path):
-    """完整模式要求的测试缺失时不能通过。"""
+    """完整模式要求的测试缺失时不能通过。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     root = project(tmp_path, extra='[required]\nfull = ["tests"]\n')
     assert run_cli("check", root, "--profile", "full").returncode == 2
     assert any(
@@ -169,7 +230,11 @@ def test_unconfigured_required_gate_is_incomplete(tmp_path):
 
 
 def test_cpp_detects_missing_function_docs(tmp_path):
-    """有文件注释但缺函数说明时仍然失败。"""
+    """有文件注释但缺函数说明时仍然失败。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     (tmp_path / "part.hh").write_text(
         "/** @file part.hh\n * @brief 中文文件。\n */\nint Add(int x) { return x + 1; }\n"
     )
@@ -179,7 +244,11 @@ def test_cpp_detects_missing_function_docs(tmp_path):
 
 
 def test_cpp_documented_constructor_and_template(tmp_path):
-    """模板、类和构造函数前的 Doxygen 说明可以被识别。"""
+    """模板、类和构造函数前的 Doxygen 说明可以被识别。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     (tmp_path / "part.hh").write_text(
         """/** @file part.hh
  * @brief 中文文件。
@@ -198,13 +267,21 @@ template<class T> class Box {
 
 
 def test_cpp_parse_failure_is_error(tmp_path):
-    """不完整 C++ 语法不会被当作通过。"""
+    """不完整 C++ 语法不会被当作通过。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     (tmp_path / "broken.cc").write_text("class Broken { void f( ;")
     assert cpp_docs(tmp_path, ["broken.cc"])["status"] == "error"
 
 
 def test_generated_and_symlink_files_are_excluded(tmp_path):
-    """生成物与符号链接不进入检查，普通未跟踪源码仍进入。"""
+    """生成物与符号链接不进入检查，普通未跟踪源码仍进入。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     root = project(tmp_path)
     generated = root / "build"
     generated.mkdir()
@@ -215,7 +292,11 @@ def test_generated_and_symlink_files_are_excluded(tmp_path):
 
 
 def test_project_black_configuration_is_honored(tmp_path):
-    """已有 Black 字符串规范选项被保留，检查不会擅自换排版。"""
+    """已有 Black 字符串规范选项被保留，检查不会擅自换排版。
+
+    Args:
+        tmp_path: pytest 提供的独立临时目录，用于构造工程与证据文件。
+    """
     root = project(tmp_path, '"""中文示例。"""\n\nx = \'text\'\n')
     (root / "pyproject.toml").write_text(
         "[tool.black]\nskip-string-normalization = true\n"

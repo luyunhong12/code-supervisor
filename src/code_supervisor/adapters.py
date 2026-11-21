@@ -51,7 +51,11 @@ OPTIONS = {
 
 
 def validate_settings(settings):
-    """校验高级检查参数，拒绝未知字段、错写模式和非有限阈值。"""
+    """校验高级检查参数，拒绝未知字段、错写模式和非有限阈值。
+
+    Args:
+        settings: 按检查器名称索引的高级配置，原地校验但不执行检查。
+    """
     if not isinstance(settings, dict) or set(settings) - set(REGISTRY):
         raise ValueError("settings 含未知高级检查")
     for name, options in settings.items():
@@ -139,8 +143,18 @@ def validate_settings(settings):
 
 
 def advanced_checks(root, cfg, files, output, profile, enabled):
-    """按配置执行高级适配器，保留每项原始证据和明确失败状态。"""
-    order = {"quick": 0, "full": 1, "deep": 2}
+    """按配置执行高级适配器，保留每项原始证据和明确失败状态。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        cfg: 已完成边界校验的工程配置映射。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        output: 本次检查的独立输出目录，调用前应已创建。
+        profile: 本次检查模式：quick、full 或 deep。
+        enabled: 是否允许执行项目命令或需要授权的高级检查。
+    """
+    from .config import PROFILE_ORDER as order
+
     results = []
     for name in cfg["checks"]:
         if name not in REGISTRY:
@@ -152,9 +166,10 @@ def advanced_checks(root, cfg, files, output, profile, enabled):
             result = dict(status="not-run", reason="不属于本次模式")
         elif language and language not in files.values():
             result = dict(status="not-applicable", reason="范围内无适用语言源码")
-        elif executes and not enabled:
+        elif (executes or options.get("executable")) and not enabled:
             result = dict(
-                status="not-run", reason="需 --run-commands 执行隔离测试/构建或漏洞查询"
+                status="not-run",
+                reason="需 --run-commands 执行自定义程序、隔离测试/构建或漏洞查询",
             )
         else:
             folder = output / name

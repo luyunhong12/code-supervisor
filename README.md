@@ -10,7 +10,7 @@ Code Supervisor 是一个给 Python 和 C++ 工程做代码审查的命令行工
 
 ## 第一次运行
 
-下面以 Linux 为例。在 Ubuntu 24.04 上，请先准备 Git、Python 3.12（含 venv）、Node.js、npm、CMake/CTest、GCC/G++（含 gcov）和 Doxygen，并确保可以联网。安装脚本最后会检查完整工具链，即使只运行 Python 示例也需要这些工具。
+下面以 Linux 为例。在 Ubuntu 24.04 上，请先准备 Git、Python 3.12（含 venv）、Node.js、npm、CMake/CTest、GCC/G++（含 gcov）和 Doxygen，并确保可以联网。默认安装并检查 Python 与 C++ 完整工具链。只检查一种语言时，可用下面的按需安装方式。
 
 ```bash
 sudo apt-get install git python3-venv nodejs npm cmake g++ doxygen
@@ -54,9 +54,27 @@ bash scripts/bootstrap.sh
 | --- | --- |
 | 配置检查范围、函数及配置参数注释、测试与构建 | [配置手册](docs/configuration.md) · [C++ 示例](examples/cpp-demo/supervisor.toml) |
 | 看一个 ROS/Gazebo 工程如何接入 | [车辆工程案例](docs/carriage-example.md) |
-| 核对实际验证过哪些能力 | [验证记录](VALIDATION.md) |
+| 核对实际验证过哪些能力 | [当前验证状态](VALIDATION.md) |
 | 在 GitHub 上自动检查并保存报告 | [CI 工作流](.github/workflows/quality.yml) |
 
 ## 许可证
 
 Supervisor 自有代码与文档采用 [MIT 许可证](LICENSE)。中文清单参考 ub-mode，保留原作者声明；各检测器保留各自的许可证。见[第三方来源与授权](THIRD_PARTY_NOTICES.md)。
+
+## 按语言安装
+
+工具只维护 Python、C++ 及相关配置检查；Node.js/npm 是 C++ 重复检测器
+jscpd 的运行依赖，不表示支持 JavaScript 项目检查。
+
+```bash
+bash scripts/bootstrap.sh python  # Python 高级检查，不安装 C++ 工具链或 jscpd
+bash scripts/bootstrap.sh cpp     # C++ 高级检查，不安装 Python 的 ub 工具
+bash scripts/bootstrap.sh all     # 默认：两种语言
+.venv/bin/supervisor doctor --language python
+.venv/bin/supervisor doctor --language cpp
+```
+
+Python 模式仍需 Python、venv、Git 和网络；C++ 模式另需 CMake/CTest、
+GCC/G++、gcov、Doxygen、Node.js/npm。安装器不负责安装系统包。
+已有环境不会因选择某模式而卸载原有工具。完整测试套件需要 all 环境。
+XML 标准注释规范见 [代码规范](docs/coding-standard.md#91-xml-标准注释)。

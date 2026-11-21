@@ -27,7 +27,13 @@ def setup_parsers():
 
 
 def python_sources(root, files, options):
-    """确认原工具支持的 .py 范围，并先用 AST 拒绝语法错误。"""
+    """确认原工具支持的 .py 范围，并先用 AST 拒绝语法错误。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+    """
     selected = selected_files(root, files, options, "python")
     for name in selected:
         if not name.endswith(".py"):
@@ -41,6 +47,12 @@ def measure(root, files, options, output):
 
     仅支持 pytest argv 参数列表，测试失败或选定源码没有执行记录时抛错。
     coverage 的输出绝对路径必须位于隔离副本，不接受安装目录中的同名模块。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
     """
     names = python_sources(root, files, options)
     work = snapshot(root, output, options)
@@ -99,7 +111,14 @@ def measure(root, files, options, output):
 
 
 def crapper(root, files, options, output):
-    """用原版函数提取与 CRAP 公式，匹配本轮真实行/分支覆盖率。"""
+    """用原版函数提取与 CRAP 公式，匹配本轮真实行/分支覆盖率。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
+    """
     setup_parsers()
     from crapper.analyze import analyze_files
     from crapper.coverage import CoverageBundle, FileCoverage
@@ -120,6 +139,8 @@ def crapper(root, files, options, output):
     entries = analyze_files([work / n for n in names], work, bundle)
     if not entries:
         raise CheckError("crapper 未识别任何函数，不能报告通过")
+    if any(e.crap is None or e.coverage is None for e in entries):
+        raise CheckError("crapper 缺少可靠分数或覆盖率，不能生成数值结论")
     rows = [asdict(e) for e in entries]
     issues = [
         finding(
@@ -129,7 +150,7 @@ def crapper(root, files, options, output):
             f"{e.namespace}.{e.name}: CRAP={e.crap:.3f}, CC={e.complexity}, coverage={e.coverage:.2f}%",
         )
         for e in entries
-        if e.crap is None or e.crap >= options.get("threshold", 10)
+        if e.crap >= options.get("threshold", 10)
     ]
     return dict(
         status="fail" if issues else "pass",
@@ -141,7 +162,14 @@ def crapper(root, files, options, output):
 
 
 def dryer(root, files, options, output):
-    """读取原版结构指纹候选，不使用 dryer 的退出0判断无重复。"""
+    """读取原版结构指纹候选，不使用 dryer 的退出0判断无重复。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
+    """
     setup_parsers()
     from dryer.scan import scan_files, find_duplicates
 
@@ -178,9 +206,16 @@ def mutator(root, files, options, output):
 
     不把超时或基础设施错误算作杀死变异；语法无效项单列；超出预算或零执行不通过。
     每次测试启动新的解释器，测试前清除缓存；源码在 finally 中恢复。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
     """
     setup_parsers()
     from mutator.functions import sites_in_file
+    from coverage.parser import PythonParser
     from .process import execute
 
     work, names, coverage = measure(root, files, options, output)
@@ -200,17 +235,19 @@ def mutator(root, files, options, output):
         path = work / name
         original = path.read_bytes()
         sites = sites_in_file(original.decode(), path, work, name)
+        # coverage 将多行表达式归到语句首行；用同一映射匹配变异位置。
+        line_parser = PythonParser(text=original.decode(), filename=str(path))
+        line_parser.parse_source()
+        covered_lines = set(coverage[name]["executed_lines"])
         for site in sites:
             record = dict(
                 file=name,
                 line=site.line,
                 original=site.original,
                 replacement=site.mutant,
+                mutation_id=site.mutation_id,
             )
-            if (
-                site.anchor_line not in coverage[name]["executed_lines"]
-                and site.line not in coverage[name]["executed_lines"]
-            ):
+            if not (line_parser.translate_lines({site.line}) & covered_lines):
                 record["outcome"] = "uncovered"
             elif executed >= budget:
                 record["outcome"] = "budget-exhausted"
@@ -241,6 +278,7 @@ def mutator(root, files, options, output):
                     finally:
                         path.write_bytes(original)
             outcomes.append(record)
+            save(output, "mutator", outcomes)
     issues = [
         finding(r["file"], r["line"], "MUTATION", r["outcome"])
         for r in outcomes

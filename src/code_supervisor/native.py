@@ -1,7 +1,6 @@
 """C++ 官方文档、真实构建、静态分析、覆盖率和运行时验证。"""
 
 import json
-from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
 
@@ -10,11 +9,22 @@ from .tasks import CheckError, run, save, selected_files, snapshot, tool
 
 
 def doxygen(root, files, options, output):
-    """使用官方 Doxygen 处理声明与文档，收集警告及生成的 XML。"""
+    """使用官方 Doxygen 处理声明与文档，收集警告及生成的 XML。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
+    """
     names = selected_files(root, files, options, "cpp")
 
     def quote(p):
-        """为 Doxygen 配置路径添加引号。"""
+        """为 Doxygen 配置路径添加引号。
+
+        Args:
+            p: 需要为 Doxygen 配置引用的文件路径。
+        """
         return '"' + str(p).replace("\\", "/").replace('"', '\\"') + '"'
 
     config = output / "Doxyfile"
@@ -74,8 +84,35 @@ def doxygen(root, files, options, output):
     )
 
 
+def compilation_directory(entry, work):
+    """解析编译条目的工作目录，相对目录以隔离副本为基准。
+
+    Args:
+        entry: 编译数据库中的单个条目。
+        work: 当前隔离副本的根目录。
+    """
+    return (work / entry.get("directory", ".")).resolve()
+
+
+def compilation_path(entry, work):
+    """按编译数据库条目的工作目录解析翻译单元路径。
+
+    Args:
+        entry: 含 file 和可选 directory 的编译数据库条目。
+        work: 缺省工作目录，指向当前隔离副本。
+    """
+    return (compilation_directory(entry, work) / entry["file"]).resolve()
+
+
 def prepare(root, options, output, flags=""):
-    """在隔离副本中配置并构建 CMake 工程，不使用旧二进制。"""
+    """在隔离副本中配置并构建 CMake 工程，不使用旧二进制。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
+        flags: 额外的编译与链接参数字符串，用于覆盖率或运行时检测。
+    """
     work = snapshot(root, output, options)
     source = work / options.get("cmake_source", ".")
     if not source.resolve().is_relative_to(work):
@@ -105,7 +142,7 @@ def prepare(root, options, output, flags=""):
         own = [
             entry
             for entry in entries
-            if Path(entry["file"]).resolve().is_relative_to(work)
+            if compilation_path(entry, work).is_relative_to(work)
         ]
         marker = flags.split()[0]
         if not own or any(
@@ -117,7 +154,15 @@ def prepare(root, options, output, flags=""):
 
 
 def build_project(work, build, options, output, label):
-    """执行真实增量构建；变异测试另行强制清理，避免旧产物冒充结果。"""
+    """执行真实增量构建；变异测试另行强制清理，避免旧产物冒充结果。
+
+    Args:
+        work: 包含显式输入的隔离工程副本目录。
+        build: 当前副本的 CMake 构建目录。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
+        label: 日志及相关证据文件的名称前缀。
+    """
     return run(
         [
             tool("cmake"),
@@ -137,6 +182,14 @@ def test_project(work, build, options, output, label, accept_failure=False):
     """运行 CTest 并验证非空 JUnit，返回通过或发现失败。
 
     无测试、测试未执行、进程异常、Sanitizer运行库失败都不算成功证据。
+
+    Args:
+        work: 包含显式输入的隔离工程副本目录。
+        build: 当前副本的 CMake 构建目录。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
+        label: 日志及相关证据文件的名称前缀。
+        accept_failure: 是否接受 CTest 退出码 8 并将测试失败交给上层分类。
     """
     junit = output / (label + ".xml")
     log, code = run(
@@ -159,6 +212,11 @@ def test_project(work, build, options, output, label, accept_failure=False):
     cases = tree.findall(".//testcase")
     if not cases or any(c.find("skipped") is not None for c in cases):
         raise CheckError("CTest 没有执行测试或存在跳过项")
+    failed = any(
+        c.find("failure") is not None or c.find("error") is not None for c in cases
+    )
+    if bool(code) != failed:
+        raise CheckError("CTest 退出码与 JUnit 失败/错误节点不一致")
     text = log.read_text(errors="replace")
     if (
         "unexpected memory mapping" in text
@@ -170,7 +228,14 @@ def test_project(work, build, options, output, label, accept_failure=False):
 
 
 def cpp_build(root, files, options, output):
-    """在新副本构建并运行非空 C++ 测试套件。"""
+    """在新副本构建并运行非空 C++ 测试套件。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
+    """
     work, build = prepare(root, options, output)
     code, log, count = test_project(work, build, options, output, "ctest", True)
     return dict(
@@ -183,31 +248,55 @@ def cpp_build(root, files, options, output):
 
 
 def clang_tidy(root, files, options, output):
-    """使用本次真实构建的编译数据库逐个分析自有翻译单元。"""
+    """使用本次真实构建的编译数据库逐个分析自有翻译单元。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
+    """
+    names = selected_files(root, files, options, "cpp")
     work, build = prepare(root, options, output)
+    selected = {(work / name).resolve(): name for name in names}
+    if any(not path.is_file() for path in selected):
+        raise CheckError("inputs 没有包含全部选定 C++ 文件")
+    headers = {p for p in selected if p.suffix in {".h", ".hh", ".hpp", ".hxx"}}
     database = build / "compile_commands.json"
     entries = json.loads(database.read_text())
-    units = sorted(
-        {
-            str(Path(e["file"]).resolve())
-            for e in entries
-            if Path(e["file"]).resolve().is_relative_to(work)
-        }
-    )
+    own = {compilation_path(e, work) for e in entries}
+    own = {path for path in own if path.is_relative_to(work)}
+    if set(selected) - headers - own:
+        raise CheckError("编译数据库不含全部选定源文件")
+    # 头文件须通过翻译单元分析；最终诊断仍严格限制在选定文件内。
+    units = sorted(own if headers else own & selected.keys())
     if not units:
-        raise CheckError("编译数据库不含自有翻译单元")
+        raise CheckError("编译数据库不含可分析的自有翻译单元")
+    seen_headers = set()
     issues = []
-    for index, name in enumerate(units):
+    commands = [entry for entry in entries if compilation_path(entry, work) in units]
+    for index, entry in enumerate(commands):
+        path = compilation_path(entry, work)
+        directory = compilation_directory(entry, work)
+        # 同一文件可能在多个目录用不同宏编译；逐条运行，避免混淆相对诊断路径。
+        database_dir = output / f"tidy-db-{index}"
+        database_dir.mkdir()
+        (database_dir / "compile_commands.json").write_text(
+            json.dumps([dict(entry, file=str(path), directory=str(directory))])
+        )
         log, code = run(
             [
                 tool("clang-tidy"),
-                name,
+                str(path),
                 "-p",
-                str(build),
+                str(database_dir),
                 "--checks=-*,clang-analyzer-*,bugprone-*,performance-*",
                 "--warnings-as-errors=*",
+                # 先采集头文件诊断，再按解析后的精确路径过滤，兼容相对 -I 路径。
+                "--header-filter=.*",
+                "--extra-arg=-H",
             ],
-            work,
+            directory,
             output,
             f"tidy-{index}",
             options.get("timeout", 180),
@@ -216,22 +305,40 @@ def clang_tidy(root, files, options, output):
         text = log.read_text(errors="replace")
         if "clang-diagnostic-error" in text:
             raise CheckError(f"Clang 无法解析真实构建配置：{log}")
-        for match in re.finditer(
-            r"^(.+?):(\d+):\d+: (?:warning|error): (.+)$", text, re.M
-        ):
-            issues.append(finding(match[1], int(match[2]), "CLANG-TIDY", match[3]))
-        if code and not issues:
+        seen_headers.update(
+            (directory / name).resolve()
+            for name in re.findall(r"^\.+ (.+)$", text, re.M)
+        )
+        matches = list(
+            re.finditer(r"^(.+?):(\d+):\d+: (?:warning|error): (.+)$", text, re.M)
+        )
+        if code and not matches:
             raise CheckError(f"clang-tidy失败且无可解析诊断：{log}")
+        for match in matches:
+            location = (directory / match[1]).resolve()
+            if location in selected:
+                issues.append(
+                    finding(selected[location], int(match[2]), "CLANG-TIDY", match[3])
+                )
+    if headers - seen_headers:
+        raise CheckError("选定头文件未被本轮翻译单元包含，不能证明已分析")
     return dict(
         status="fail" if issues else "pass",
         findings=issues,
-        translation_units=units,
-        scope="本轮编译数据库中的自有翻译单元；头文件按包含关系分析",
+        translation_units=[str(path.relative_to(work)) for path in units],
+        scope="仅报告选定文件；头文件通过自有翻译单元分析并验证包含记录",
     )
 
 
 def cpp_coverage(root, files, options, output):
-    """重新插桩构建和测试，以 gcovr 采集本轮 C++ 行覆盖率。"""
+    """重新插桩构建和测试，以 gcovr 采集本轮 C++ 行覆盖率。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
+    """
     work, build = prepare(root, options, output, "--coverage -O0 -g")
     test_project(work, build, options, output, "coverage-tests")
     path = output / "gcovr.json"
@@ -278,7 +385,14 @@ def cpp_coverage(root, files, options, output):
 
 
 def sanitizers(root, files, options, output):
-    """分别构建地址/未定义行为或线程检查版本，并运行实际测试。"""
+    """分别构建地址/未定义行为或线程检查版本，并运行实际测试。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
+    """
     kind = options.get("kind", "address,undefined")
     if kind not in {"address,undefined", "thread"}:
         raise CheckError(
@@ -308,7 +422,14 @@ def sanitizers(root, files, options, output):
 
 
 def cpp_complexity(root, files, options, output):
-    """使用 Lizard 计算 C++ 函数复杂度，不伪造缺少覆盖率的 CRAP。"""
+    """使用 Lizard 计算 C++ 函数复杂度，不伪造缺少覆盖率的 CRAP。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
+    """
     import lizard
 
     rows = []
@@ -341,7 +462,14 @@ def cpp_complexity(root, files, options, output):
 
 
 def cpp_duplicates(root, files, options, output):
-    """使用固定 jscpd 的 JSON 克隆记录判定 C++ 重复候选。"""
+    """使用固定 jscpd 的 JSON 克隆记录判定 C++ 重复候选。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
+    """
     names = selected_files(root, files, options, "cpp")
     command = [
         tool("jscpd"),
@@ -381,7 +509,11 @@ def cpp_duplicates(root, files, options, output):
 
 
 def mutation_sites(source):
-    """仅提取函数体中的 C++ 二元运算符，忽略注释、字符串和声明。"""
+    """仅提取函数体中的 C++ 二元运算符，忽略注释、字符串和声明。
+
+    Args:
+        source: 待解析的 C++ UTF-8 源码字节。
+    """
     from tree_sitter import Language, Parser
     import tree_sitter_cpp
     from .cpp import nodes
@@ -430,6 +562,12 @@ def cpp_mutation(root, files, options, output):
 
     这是有限二元算子变异后端，不冒充 Mull。编译无效、执行错误和预算未完成单列。
     仅测试失败算杀死；无已执行有效变异不能通过。
+
+    Args:
+        root: 工程根目录，调用方应传入已解析的绝对路径。
+        files: 本次扫描得到的相对源码路径到语言的映射。
+        options: 当前检查器的配置项，使用其声明的默认值补齐可选项。
+        output: 本次检查的独立输出目录，调用前应已创建。
     """
     names = selected_files(root, files, options, "cpp")
     work, build = prepare(root, options, output)

@@ -9,7 +9,11 @@ import sys
 
 
 def convert_summary(data):
-    """只接受完整、非空且状态一致的车辆验收汇总。"""
+    """只接受完整、非空且状态一致的车辆验收汇总。
+
+    Args:
+        data: 车辆验收汇总映射，须包含完整标志、总判定与各工况结果。
+    """
     results = data.get("results")
     if data.get("complete") is not True or not isinstance(results, dict) or not results:
         raise ValueError("车辆验收未完整结束或没有工况")
